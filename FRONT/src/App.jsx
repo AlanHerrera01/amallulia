@@ -411,6 +411,58 @@ const classifyMediaContent = (raw) => {
   return { label: 'Sin clasificar', reasons }
 }
 
+// ===== Tono emocional del texto (solo Front, heuristica por palabras clave) =====
+// El Back solo devuelve un sentimiento general (positivo/neutral/negativo/mixto,
+// analysis.sentiment) sin desglose de emociones ni de que palabras lo motivaron.
+// Esto complementa ese dato con una deteccion por lexico en español sobre el texto
+// real del articulo, mostrando exactamente que palabras se encontraron, para dar
+// un "por que" verificable en vez de una emocion inventada por el modelo.
+const EMOTION_LEXICON = {
+  ira: ['indignacion', 'indignado', 'indignada', 'indignante', 'indignados', 'furia', 'furioso', 'furiosa', 'rabia', 'rabioso', 'enojo', 'enojado', 'enojada', 'molesto', 'molesta', 'hartazgo', 'harto', 'harta', 'agresion', 'agresivo', 'agresiva', 'violencia', 'violento', 'violenta', 'abuso', 'corrupcion', 'corrupto', 'corrupta', 'injusticia', 'injusto', 'injusta', 'escandalo', 'repudio', 'protesta', 'denuncia', 'ataque'],
+  miedo: ['miedo', 'temor', 'terror', 'panico', 'alarma', 'alarmante', 'amenaza', 'amenazante', 'peligro', 'peligroso', 'peligrosa', 'riesgo', 'inseguridad', 'inseguro', 'insegura', 'crisis', 'alerta', 'preocupacion', 'preocupante', 'catastrofe', 'desastre'],
+  alegria: ['alegria', 'felicidad', 'exito', 'celebra', 'celebracion', 'triunfo', 'logro', 'avance', 'orgullo', 'esperanza', 'positivo', 'positiva', 'mejora', 'beneficio', 'oportunidad', 'victoria'],
+  tristeza: ['tristeza', 'triste', 'dolor', 'duelo', 'lamentable', 'lamenta', 'perdida', 'luto', 'sufrimiento', 'sufre', 'lagrimas', 'desconsuelo'],
+  sorpresa: ['sorpresa', 'sorprendente', 'inesperado', 'inesperada', 'insolito', 'asombroso', 'impactante', 'revelador', 'inedito']
+}
+
+const EMOTION_LABELS = {
+  ira: 'Ira / indignación',
+  miedo: 'Miedo / alarma',
+  alegria: 'Alegría / optimismo',
+  tristeza: 'Tristeza / pesar',
+  sorpresa: 'Sorpresa / impacto',
+  neutral: 'Sin tono emocional marcado'
+}
+
+const EMOTION_COLORS = {
+  ira: '#E85D5D',
+  miedo: '#E8A33D',
+  alegria: '#00C896',
+  tristeza: '#7A8290',
+  sorpresa: '#3B82F6',
+  neutral: '#7A8290'
+}
+
+const DIACRITICS_REGEX = new RegExp('[̀-ͯ]', 'g')
+const normalizeForMatch = (text) => (text || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(DIACRITICS_REGEX, '')
+
+const analyzeEmotionSignals = (text) => {
+  const normalized = normalizeForMatch(text).slice(0, 6000)
+  const matches = {}
+  Object.entries(EMOTION_LEXICON).forEach(([emotion, words]) => {
+    const found = words.filter(w => new RegExp(`\\b${w}\\b`).test(normalized))
+    if (found.length > 0) matches[emotion] = found
+  })
+  const entries = Object.entries(matches)
+  if (entries.length === 0) return { emotion: 'neutral', words: [] }
+  entries.sort((a, b) => b[1].length - a[1].length)
+  const [topEmotion, topWords] = entries[0]
+  return { emotion: topEmotion, words: topWords }
+}
+
 function App() {
   const [termsAccepted, setTermsAccepted] = useState(() => {
     try {
@@ -600,6 +652,8 @@ function App() {
   const buildNewsHistoryDetail = (raw) => ({
     kind: 'news',
     contentType: classifyNewsContent(raw),
+    emotion: analyzeEmotionSignals([raw.article?.title, raw.analysis?.summary, raw.article?.text].filter(Boolean).join(' ')),
+    sentiment: raw.analysis?.sentiment || null,
     reliability: raw.news_reliability_assessment || null,
     sourceVerification: raw.source_verification || null,
     sourceClassification: raw.source_classification ? {
@@ -954,6 +1008,9 @@ function App() {
     const keywords = result.analysis?.keywords || article.keywords || []
     const reviewBlock = (result.audit?.presentation_blocks || []).find(block => block.title === 'Recomendaciones para revisar')
     const summary = result.analysis?.summary || article.description || 'Sin resumen disponible.'
+    const emotionSignal = analyzeEmotionSignals([article.title, summary, article.text].filter(Boolean).join(' '))
+    const emotionColor = EMOTION_COLORS[emotionSignal.emotion]
+    const backendSentiment = result.analysis?.sentiment
     const isElectoral = Boolean(result.electoral_relevance?.is_electoral || result.analysis?.is_electoral)
     const safeScore = Math.max(0, Math.min(100, Number(score) || 0))
     const confidenceData = [
@@ -1049,6 +1106,38 @@ function App() {
                 </ul>
               </div>
             )}
+
+            <div className="rounded-lg p-4 border" style={{ backgroundColor: emotionColor + '0D', borderColor: emotionColor + '40' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4" style={{ color: emotionColor }} />
+                <h4 className="text-sm font-bold" style={{ color: emotionColor }}>
+                  Tono emocional del texto: {EMOTION_LABELS[emotionSignal.emotion]}
+                </h4>
+              </div>
+              {backendSentiment && (
+                <p className="text-xs text-gray-600 mb-2">
+                  Sentimiento general calculado por la IA: <span className="font-semibold text-gray-900 capitalize">{backendSentiment.label}</span>
+                  {typeof backendSentiment.score === 'number' && ` (${(backendSentiment.score * 100).toFixed(0)}% de confianza)`}
+                </p>
+              )}
+              {emotionSignal.words.length > 0 ? (
+                <>
+                  <p className="text-xs text-gray-600 mb-1.5">Palabras del texto que sugieren este tono:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {emotionSignal.words.slice(0, 10).map((w, i) => (
+                      <span key={i} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: emotionColor + '18', color: emotionColor }}>
+                        {w}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                    Detectado por análisis de palabras clave en el texto de la noticia, como apoyo explicable al sentimiento general calculado por la IA.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-600">No se detectaron palabras con carga emocional marcada en el texto.</p>
+              )}
+            </div>
 
             <div className="grid md:grid-cols-3 gap-3 rounded-lg p-3" style={{ backgroundColor: '#F8F9FA' }}>
               <div>
@@ -1286,6 +1375,31 @@ function App() {
               <li key={i} className="text-xs" style={detailMutedStyle}>· {r}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {d.emotion && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={{ color: EMOTION_COLORS[d.emotion.emotion] }}>
+            Tono emocional del texto: {EMOTION_LABELS[d.emotion.emotion]}
+          </span>
+          {d.sentiment && (
+            <p className="text-xs mt-1" style={detailMutedStyle}>
+              Sentimiento general (IA): <span className="capitalize" style={detailLabelStyle}>{d.sentiment.label}</span>
+              {typeof d.sentiment.score === 'number' && ` (${(d.sentiment.score * 100).toFixed(0)}% confianza)`}
+            </p>
+          )}
+          {d.emotion.words.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {d.emotion.words.slice(0, 10).map((w, i) => (
+                <span key={i} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: EMOTION_COLORS[d.emotion.emotion] + '22', color: EMOTION_COLORS[d.emotion.emotion] }}>
+                  {w}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs mt-1" style={detailMutedStyle}>No se detectaron palabras con carga emocional marcada en el texto.</p>
+          )}
         </div>
       )}
 
