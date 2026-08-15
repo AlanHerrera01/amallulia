@@ -353,6 +353,12 @@ function App() {
     })
   }
 
+  // Abre a Kuybot con una pregunta ya enfocada en el analisis guardado en Auditoria.
+  const handleAskKuybot = (item) => {
+    setInputMessage(`Cuéntame más sobre el análisis de: "${item.title}"`)
+    setChatOpen(true)
+  }
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -494,8 +500,29 @@ function App() {
     claimContrasts: (raw.claim_contrasts || []).slice(0, 6).map(c => ({
       claim: truncateText(c.claim, 200),
       status_label: c.status_label,
-      explanation: truncateText(c.explanation, 200)
+      explanation: truncateText(c.explanation, 200),
+      sources_consulted: (c.sources_consulted || []).slice(0, 3),
+      evidence_url: c.evidence_url || null
     })),
+    informationGaps: (raw.analysis?.information_gaps || []).slice(0, 5).map(g => ({
+      missing_item: g.missing_item,
+      why_it_matters: truncateText(g.why_it_matters, 200),
+      suggested_verification: truncateText(g.suggested_verification, 200),
+      priority: g.priority
+    })),
+    audit: raw.audit ? {
+      priority: raw.audit.priority,
+      evidence_summary: raw.audit.evidence_summary,
+      evidence_items: (raw.audit.evidence_items || []).slice(0, 14).map(e => ({
+        type: e.type,
+        label: e.label,
+        value: truncateText(e.value, 160),
+        severity: e.severity
+      })),
+      reviewRecommendations: (
+        (raw.audit.presentation_blocks || []).find(b => b.title === 'Recomendaciones para revisar')?.items || []
+      ).slice(0, 6)
+    } : null,
     article: raw.article ? {
       title: raw.article.title,
       author: raw.article.author,
@@ -1147,12 +1174,88 @@ function App() {
 
       {d.claimContrasts?.length > 0 && (
         <div className="rounded-lg p-3" style={detailCardStyle}>
-          <span className="text-xs font-semibold" style={detailLabelStyle}>Afirmaciones contrastadas</span>
-          <ul className="mt-1.5 space-y-1.5">
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Afirmaciones contrastadas con fuentes</span>
+          <ul className="mt-1.5 space-y-2">
             {d.claimContrasts.map((c, i) => (
-              <li key={i} className="text-xs" style={detailMutedStyle}><span style={detailLabelStyle}>{c.status_label}:</span> {c.claim}</li>
+              <li key={i} className="text-xs" style={detailMutedStyle}>
+                <span style={detailLabelStyle}>{c.status_label}:</span> {c.claim}
+                {c.sources_consulted?.length > 0 && (
+                  <div className="mt-0.5">Fuentes consultadas: {c.sources_consulted.join(', ')}</div>
+                )}
+                {c.evidence_url && (
+                  <a href={c.evidence_url} target="_blank" rel="noreferrer" className="mt-0.5 inline-block underline" style={{ color: BRAND_ORANGE }}>
+                    Ver evidencia
+                  </a>
+                )}
+              </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {d.informationGaps?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Vacíos de información y contexto faltante</span>
+          <ul className="mt-1.5 space-y-2">
+            {d.informationGaps.map((g, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>
+                <span style={detailLabelStyle}>{g.missing_item}</span>
+                {g.priority && (
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide" style={{ backgroundColor: BRAND_ORANGE + '22', color: BRAND_ORANGE }}>
+                    Prioridad {g.priority}
+                  </span>
+                )}
+                {g.why_it_matters && <div className="mt-0.5">{g.why_it_matters}</div>}
+                {g.suggested_verification && <div className="mt-0.5">Sugerencia: {g.suggested_verification}</div>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.audit?.reviewRecommendations?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Recomendaciones para revisar</span>
+          <ul className="mt-1.5 space-y-1">
+            {d.audit.reviewRecommendations.map((item, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {typeof item === 'string' ? item : (item.title || item.missing_item || item.label || JSON.stringify(item))}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.audit && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={detailLabelStyle}>Evidencia de auditoría</span>
+            {d.audit.priority && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold"
+                style={{
+                  backgroundColor: (d.audit.priority === 'alta' || d.audit.priority === 'critica' ? '#E85D5D' : d.audit.priority === 'media' ? '#E8A33D' : '#00C896') + '22',
+                  color: d.audit.priority === 'alta' || d.audit.priority === 'critica' ? '#E85D5D' : d.audit.priority === 'media' ? '#E8A33D' : '#00C896'
+                }}
+              >
+                Prioridad {d.audit.priority}
+              </span>
+            )}
+          </div>
+          {d.audit.evidence_summary && (
+            <p className="text-xs leading-relaxed mb-2" style={detailMutedStyle}>{d.audit.evidence_summary}</p>
+          )}
+          {d.audit.evidence_items?.length > 0 && (
+            <ul className="space-y-1">
+              {d.audit.evidence_items.map((e, i) => {
+                const severityColor = e.severity === 'alta' ? '#E85D5D' : e.severity === 'media' ? '#E8A33D' : '#00C896'
+                return (
+                  <li key={i} className="text-xs flex items-start gap-1.5" style={detailMutedStyle}>
+                    <span className="w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: severityColor }} />
+                    <span><span style={detailLabelStyle}>{e.label}:</span> {e.value}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -1167,6 +1270,61 @@ function App() {
           Generado por IA: {d.is_ai_generated ? 'Sí' : 'No'} · Manipulado: {d.is_manipulated ? 'Sí' : 'No'} · Desinformación: {d.is_misinformation ? 'Sí' : 'No'}
         </p>
       </div>
+
+      {d.contentAnalysis?.llmAnalysis && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={detailLabelStyle}>Veredicto de IA (contexto y evidencia)</span>
+            {d.contentAnalysis.llmAnalysis.veredicto && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold"
+                style={{
+                  backgroundColor: (d.contentAnalysis.llmAnalysis.veredicto === 'AUTÉNTICO' ? '#00C896' : d.contentAnalysis.llmAnalysis.veredicto === 'MIXTO' ? '#E8A33D' : '#E85D5D') + '22',
+                  color: d.contentAnalysis.llmAnalysis.veredicto === 'AUTÉNTICO' ? '#00C896' : d.contentAnalysis.llmAnalysis.veredicto === 'MIXTO' ? '#E8A33D' : '#E85D5D'
+                }}
+              >
+                {d.contentAnalysis.llmAnalysis.veredicto}{d.contentAnalysis.llmAnalysis.confianza != null ? ` · ${d.contentAnalysis.llmAnalysis.confianza}%` : ''}
+              </span>
+            )}
+          </div>
+          {d.contentAnalysis.llmAnalysis.resumen && (
+            <p className="text-xs leading-relaxed mb-1.5" style={detailMutedStyle}>{d.contentAnalysis.llmAnalysis.resumen}</p>
+          )}
+          {d.contentAnalysis.llmAnalysis.contexto_politico && (
+            <p className="text-xs mb-1"><span style={detailLabelStyle}>Contexto:</span> <span style={detailMutedStyle}>{d.contentAnalysis.llmAnalysis.contexto_politico}</span></p>
+          )}
+          {d.contentAnalysis.llmAnalysis.coincide_con_fuentes != null && (
+            <p className="text-xs mb-1" style={detailMutedStyle}>Coincide con fuentes consultadas: {d.contentAnalysis.llmAnalysis.coincide_con_fuentes ? 'Sí' : 'No'}</p>
+          )}
+          {d.contentAnalysis.llmAnalysis.indicios_ia && (
+            <p className="text-xs mb-1" style={detailMutedStyle}>Indicios de generación por IA: {d.contentAnalysis.llmAnalysis.indicios_ia}</p>
+          )}
+          {d.contentAnalysis.llmAnalysis.observaciones && (
+            <p className="text-xs" style={detailMutedStyle}>Observaciones: {d.contentAnalysis.llmAnalysis.observaciones}</p>
+          )}
+          {d.contentAnalysis.llmAnalysis.afirmaciones_clave?.length > 0 && (
+            <div className="mt-2 pt-2" style={{ borderTop: '1px solid #1C2A52' }}>
+              <span className="text-xs font-semibold" style={detailLabelStyle}>Afirmaciones clave contrastadas</span>
+              <ul className="mt-1 space-y-0.5">
+                {d.contentAnalysis.llmAnalysis.afirmaciones_clave.map((c, i) => (
+                  <li key={i} className="text-xs" style={detailMutedStyle}>· {c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {d.contentAnalysis?.extractedClaims?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Afirmaciones extraídas</span>
+          <ul className="mt-1.5 space-y-0.5">
+            {d.contentAnalysis.extractedClaims.map((c, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {(d.audioDetails || d.videoDetails) && (
         <div className="rounded-lg p-3" style={detailCardStyle}>
@@ -2421,7 +2579,20 @@ function App() {
                                 )}
                               </div>
                             </button>
-                            {isExpanded && renderHistoryDetail(item)}
+                            {isExpanded && (
+                              <>
+                                {renderHistoryDetail(item)}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAskKuybot(item)}
+                                  className="mt-2 w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg"
+                                  style={{ backgroundColor: BRAND_ORANGE + '18', color: BRAND_ORANGE }}
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  Preguntar a Kuybot sobre esto
+                                </button>
+                              </>
+                            )}
                           </div>
                         )
                       })}
