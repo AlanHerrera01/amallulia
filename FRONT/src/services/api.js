@@ -83,7 +83,7 @@ async function parseResponse(response) {
 
 function resolveApiBaseUrl(envKey, port, productionFallback) {
   const configuredUrl = import.meta.env[envKey];
-  if (configuredUrl && !configuredUrl.includes('localhost')) return configuredUrl.replace(/\/$/, '');
+  if (configuredUrl && !configuredUrl.includes('localhost')) return normalizeApiUrl(configuredUrl);
   if (typeof window === 'undefined') return configuredUrl || productionFallback || `http://localhost:${port}`;
 
   const { protocol, hostname } = window.location;
@@ -98,4 +98,10 @@ function resolveApiBaseUrl(envKey, port, productionFallback) {
   }
 
   return configuredUrl || productionFallback || `http://localhost:${port}`;
+}
+
+function normalizeApiUrl(url) {
+  const cleanUrl = url.replace(/\/$/, '');
+  if (/^https?:\/\//i.test(cleanUrl)) return cleanUrl;
+  return `https://${cleanUrl}`;
 }
