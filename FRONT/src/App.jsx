@@ -311,20 +311,34 @@ function App() {
     }
   })
 
+  const persistHistory = (list) => {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(list))
+    } catch {
+      try {
+        // Sin espacio para el detalle completo: guardamos solo el resumen de cada analisis
+        const lightweight = list.map(({ detail, ...rest }) => rest)
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(lightweight))
+      } catch {
+        // localStorage no disponible (modo privado, cuota llena, etc.) - no bloquea el analisis
+      }
+    }
+  }
+
   const addHistoryEntry = (entry) => {
     setHistory(prev => {
       const updated = [entry, ...prev].slice(0, 50)
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-      } catch {
-        try {
-          // Sin espacio para el detalle completo: guardamos solo el resumen de cada analisis
-          const lightweight = updated.map(({ detail, ...rest }) => rest)
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(lightweight))
-        } catch {
-          // localStorage no disponible (modo privado, cuota llena, etc.) - no bloquea el analisis
-        }
-      }
+      persistHistory(updated)
+      return updated
+    })
+  }
+
+  // Actualiza en su lugar una entrada ya guardada (usado cuando el analisis de una
+  // noticia sigue en 'processing' y luego termina con el valor final real).
+  const updateHistoryEntry = (id, patch) => {
+    setHistory(prev => {
+      const updated = prev.map(h => (h.id === id ? { ...h, ...patch } : h))
+      persistHistory(updated)
       return updated
     })
   }
@@ -500,15 +514,45 @@ function App() {
     } : null
   })
 
-  const pollNewsAnalysis = (analysisId) => {
+  // Arma los campos guardables del historial a partir de un resultado ya adaptado.
+  // `pending` marca que el analisis de noticia todavia sigue procesandose en el Back
+  // y que el porcentaje/detalle mostrado es provisional (se reemplaza al terminar).
+  const buildHistoryPayload = (type, sourceValue, result, pending = false) => {
+    const status = (result.is_ai_generated || result.is_misinformation)
+      ? 'falso'
+      : (result.confidence < 0.6 ? 'dudoso' : 'verificado')
+    const sourceTitle = result.metadata?.source_metadata?.title
+    const title = sourceTitle || (type === 'link' ? sourceValue : (selectedFile?.name || videoUrl)) || 'Contenido analizado'
+    const detail = type === 'link'
+      ? buildNewsHistoryDetail(result.raw_news || {})
+      : buildMediaHistoryDetail(result || {})
+    return {
+      type,
+      title,
+      source: type === 'link' ? sourceValue : (videoUrl || selectedFile?.name || ''),
+      status,
+      confidence: typeof result.confidence === 'number' ? result.confidence : null,
+      detail,
+      pending
+    }
+  }
+
+  const pollNewsAnalysis = (analysisId, sourceUrl, historyEntryId) => {
     if (pollingRef.current) clearInterval(pollingRef.current)
     let attempts = 0
     pollingRef.current = setInterval(async () => {
       attempts += 1
       try {
         const updated = await getNewsAnalysis(analysisId)
-        setAnalysisResult(adaptNewsAnalysisResult(updated))
-        if (updated.status !== 'processing' || attempts >= 20) {
+        const adapted = adaptNewsAnalysisResult(updated)
+        setAnalysisResult(adapted)
+        const stillProcessing = updated.status === 'processing'
+        if (!stillProcessing && historyEntryId) {
+          // El analisis ya termino en el Back: reemplazamos el valor provisional
+          // guardado al enviar la noticia por el resultado final real.
+          updateHistoryEntry(historyEntryId, buildHistoryPayload('link', sourceUrl, adapted, false))
+        }
+        if (!stillProcessing || attempts >= 20) {
           clearInterval(pollingRef.current)
           pollingRef.current = null
         }
@@ -531,13 +575,27 @@ function App() {
     }
 
     try {
-      let result
-      
       if (activeTab === 'link' && urlValue) {
         const newsResponse = await analyzeNewsUrl(urlValue)
-        result = adaptNewsAnalysisResult(newsResponse)
-        if (newsResponse.status === 'processing') pollNewsAnalysis(newsResponse.id)
-      } else if (activeTab === 'video' && selectedFile) {
+        const result = adaptNewsAnalysisResult(newsResponse)
+        setAnalysisResult(result)
+
+        // Se guarda de inmediato para que aparezca en Auditoria apenas se envia la
+        // noticia; si el Back todavia la esta procesando, se marca como "pending" y
+        // se actualiza en su lugar con el valor final cuando termine el analisis.
+        const pending = newsResponse.status === 'processing'
+        const historyEntryId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        addHistoryEntry({
+          id: historyEntryId,
+          timestamp: new Date().toISOString(),
+          ...buildHistoryPayload('link', urlValue, result, pending)
+        })
+        if (pending) pollNewsAnalysis(newsResponse.id, urlValue, historyEntryId)
+        return
+      }
+
+      let result
+      if (activeTab === 'video' && selectedFile) {
         const fileType = selectedFile.type
         if (fileType.startsWith('audio/')) {
           result = await analyzeAudio(selectedFile)
@@ -554,25 +612,10 @@ function App() {
       }
 
       setAnalysisResult(result)
-
-      // Registrar en el historial real (localStorage) para Auditor y Home
-      const status = (result.is_ai_generated || result.is_misinformation)
-        ? 'falso'
-        : (result.confidence < 0.6 ? 'dudoso' : 'verificado')
-      const sourceTitle = result.metadata?.source_metadata?.title
-      const title = sourceTitle || (activeTab === 'link' ? urlValue : (selectedFile?.name || videoUrl)) || 'Contenido analizado'
-      const detail = activeTab === 'link'
-        ? buildNewsHistoryDetail(result.raw_news || {})
-        : buildMediaHistoryDetail(result || {})
       addHistoryEntry({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        type: activeTab,
-        title,
-        source: activeTab === 'link' ? urlValue : (videoUrl || selectedFile?.name || ''),
-        status,
-        confidence: typeof result.confidence === 'number' ? result.confidence : null,
         timestamp: new Date().toISOString(),
-        detail
+        ...buildHistoryPayload(activeTab, videoUrl || selectedFile?.name, result, false)
       })
     } catch (err) {
       setError(err.message || 'Error al procesar el análisis')
@@ -2278,6 +2321,16 @@ function App() {
                                 {item.confidence !== null && (
                                   <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
                                     · {(item.confidence * 100).toFixed(0)}% confianza
+                                  </span>
+                                )}
+                                {item.pending && (
+                                  <span className="text-xs font-mono flex items-center gap-1" style={{ color: BRAND_ORANGE }}>
+                                    ·
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full inline-block"
+                                      style={{ backgroundColor: BRAND_ORANGE, animation: 'pulse-dot 2s ease-in-out infinite' }}
+                                    />
+                                    Actualizando…
                                   </span>
                                 )}
                               </div>
