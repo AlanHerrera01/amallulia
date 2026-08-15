@@ -435,6 +435,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('link')
   const [chatOpen, setChatOpen] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+  const [analysisProgress, setAnalysisProgress] = useState(0)
   const [urlValue, setUrlValue] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -448,6 +449,7 @@ function App() {
   const chatEndRef = useRef(null)
   const fileInputRef = useRef(null)
   const pollingRef = useRef(null)
+  const progressTimerRef = useRef(null)
 
   const HISTORY_KEY = 'ama_llu_ia_history'
   const [history, setHistory] = useState(() => {
@@ -513,6 +515,7 @@ function App() {
 
   useEffect(() => () => {
     if (pollingRef.current) clearInterval(pollingRef.current)
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current)
   }, [])
 
   const criterios = [
@@ -726,38 +729,68 @@ function App() {
     }
   }
 
+  // Sondeo con progreso real: el porcentaje avanza segun los intentos ya hechos
+  // (cada intento = 2.5s), hasta un maximo de 20 intentos, y devuelve una promesa
+  // para que quien llama pueda esperar a que el analisis realmente termine.
   const pollNewsAnalysis = (analysisId, sourceUrl, historyEntryId) => {
     if (pollingRef.current) clearInterval(pollingRef.current)
-    let attempts = 0
-    pollingRef.current = setInterval(async () => {
-      attempts += 1
-      try {
-        const updated = await getNewsAnalysis(analysisId)
-        const adapted = adaptNewsAnalysisResult(updated)
-        setAnalysisResult(adapted)
-        const stillProcessing = updated.status === 'processing'
-        if (!stillProcessing && historyEntryId) {
-          // El analisis ya termino en el Back: reemplazamos el valor provisional
-          // guardado al enviar la noticia por el resultado final real.
-          updateHistoryEntry(historyEntryId, buildHistoryPayload('link', sourceUrl, adapted, false))
+    return new Promise((resolve) => {
+      let attempts = 0
+      pollingRef.current = setInterval(async () => {
+        attempts += 1
+        setAnalysisProgress(prev => Math.max(prev, Math.min(95, 20 + Math.round((attempts / 20) * 75))))
+        try {
+          const updated = await getNewsAnalysis(analysisId)
+          const adapted = adaptNewsAnalysisResult(updated)
+          setAnalysisResult(adapted)
+          const stillProcessing = updated.status === 'processing'
+          if (!stillProcessing && historyEntryId) {
+            // El analisis ya termino en el Back: reemplazamos el valor provisional
+            // guardado al enviar la noticia por el resultado final real.
+            updateHistoryEntry(historyEntryId, buildHistoryPayload('link', sourceUrl, adapted, false))
+          }
+          if (!stillProcessing || attempts >= 20) {
+            clearInterval(pollingRef.current)
+            pollingRef.current = null
+            resolve()
+          }
+        } catch {
+          if (attempts >= 3) {
+            clearInterval(pollingRef.current)
+            pollingRef.current = null
+            resolve()
+          }
         }
-        if (!stillProcessing || attempts >= 20) {
-          clearInterval(pollingRef.current)
-          pollingRef.current = null
-        }
-      } catch {
-        if (attempts >= 3) {
-          clearInterval(pollingRef.current)
-          pollingRef.current = null
-        }
+      }, 2500)
+    })
+  }
+
+  // El Back no expone un porcentaje de avance real para video/audio (es una sola
+  // llamada sin pasos intermedios), asi que simulamos un avance progresivo que se
+  // detiene en 90% hasta que la respuesta realmente llega.
+  const startSimulatedProgress = () => {
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current)
+    setAnalysisProgress(8)
+    progressTimerRef.current = setInterval(() => {
+      setAnalysisProgress(prev => {
+        if (prev >= 90) return prev
+        const step = prev < 40 ? 7 : prev < 70 ? 4 : 2
+        return Math.min(90, prev + step)
+      })
+    }, 500)
+    return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
       }
-    }, 2500)
+    }
   }
 
   const handleAnalyze = async () => {
     setAnalyzing(true)
     setError(null)
     setAnalysisResult(null)
+    setAnalysisProgress(0)
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
       pollingRef.current = null
@@ -765,9 +798,11 @@ function App() {
 
     try {
       if (activeTab === 'link' && urlValue) {
+        setAnalysisProgress(10)
         const newsResponse = await analyzeNewsUrl(urlValue)
         const result = adaptNewsAnalysisResult(newsResponse)
         setAnalysisResult(result)
+        setAnalysisProgress(prev => Math.max(prev, 20))
 
         // Se guarda de inmediato para que aparezca en Auditoria apenas se envia la
         // noticia; si el Back todavia la esta procesando, se marca como "pending" y
@@ -779,38 +814,48 @@ function App() {
           timestamp: new Date().toISOString(),
           ...buildHistoryPayload('link', urlValue, result, pending)
         })
-        if (pending) pollNewsAnalysis(newsResponse.id, urlValue, historyEntryId)
+        if (pending) await pollNewsAnalysis(newsResponse.id, urlValue, historyEntryId)
+        setAnalysisProgress(100)
+        await new Promise(r => setTimeout(r, 350))
         return
       }
 
       let result
-      if (activeTab === 'video' && selectedFile) {
-        const fileType = selectedFile.type
-        if (fileType.startsWith('audio/')) {
-          result = await analyzeAudio(selectedFile)
-        } else if (fileType.startsWith('video/')) {
-          result = await analyzeVideo(selectedFile)
+      const stopSimulatedProgress = startSimulatedProgress()
+      try {
+        if (activeTab === 'video' && selectedFile) {
+          const fileType = selectedFile.type
+          if (fileType.startsWith('audio/')) {
+            result = await analyzeAudio(selectedFile)
+          } else if (fileType.startsWith('video/')) {
+            result = await analyzeVideo(selectedFile)
+          } else {
+            throw new Error('Tipo de archivo no soportado. Usa archivos de audio o video.')
+          }
+        } else if (activeTab === 'video' && videoUrl) {
+          // Usar videoUrl si no hay archivo seleccionado
+          result = await analyzeMediaUrl(videoUrl)
         } else {
-          throw new Error('Tipo de archivo no soportado. Usa archivos de audio o video.')
+          throw new Error('Por favor ingresa una URL o selecciona un archivo')
         }
-      } else if (activeTab === 'video' && videoUrl) {
-        // Usar videoUrl si no hay archivo seleccionado
-        result = await analyzeMediaUrl(videoUrl)
-      } else {
-        throw new Error('Por favor ingresa una URL o selecciona un archivo')
+      } finally {
+        stopSimulatedProgress()
       }
 
       setAnalysisResult(result)
+      setAnalysisProgress(100)
       addHistoryEntry({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         timestamp: new Date().toISOString(),
         ...buildHistoryPayload(activeTab, videoUrl || selectedFile?.name, result, false)
       })
+      await new Promise(r => setTimeout(r, 350))
     } catch (err) {
       setError(err.message || 'Error al procesar el análisis')
       console.error('Error al analizar:', err)
     } finally {
       setAnalyzing(false)
+      setAnalysisProgress(0)
     }
   }
 
@@ -2293,6 +2338,20 @@ function App() {
                       </>
                     )}
                   </button>
+                  {analyzing && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-gray-600">Progreso del análisis</span>
+                        <span className="text-xs font-mono font-bold" style={{ color: BRAND_ORANGE }}>{analysisProgress}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#E9ECEF' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${analysisProgress}%`, backgroundColor: BRAND_ORANGE }}
+                        />
+                      </div>
+                    </div>
+                  )}
                   {analysisResult?.module === 'noticias' && (
                     <NewsResultPanel result={analysisResult.raw_news} />
                   )}
@@ -2388,6 +2447,20 @@ function App() {
                       </>
                     )}
                   </button>
+                  {analyzing && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium" style={{ color: '#7A8290' }}>Progreso del análisis</span>
+                        <span className="text-xs font-mono font-bold" style={{ color: BRAND_ORANGE }}>{analysisProgress}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#16234E' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${analysisProgress}%`, backgroundColor: BRAND_ORANGE }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Resultados del análisis */}
                   {analysisResult && analysisResult.module !== 'noticias' && (() => {
