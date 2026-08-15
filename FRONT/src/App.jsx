@@ -1,8 +1,9 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import { MessageCircle, X, Send, Link as LinkIcon, Upload, ClipboardList, Search, AlertTriangle, CheckCircle2, XCircle, Activity, Info, TrendingUp, BookOpen, Home, Landmark, Scale, Users, ArrowRight } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
-import { analyzeNewsUrl, getNewsAnalysis, analyzeMediaUrl, analyzeAudio, analyzeVideo } from './services/api'
+import { analyzeNewsUrl, getNewsAnalysis, askKuybot, analyzeMediaUrl, analyzeAudio, analyzeVideo } from './services/api'
 import logo from './assets/logo.jpeg'
+import kuybotMascot from './assets/KUYBOT.png'
 
 // Paleta de marca (del logo AMA-LLU-IA)
 const BRAND_ORANGE = '#F5822B'
@@ -20,9 +21,10 @@ function App() {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [error, setError] = useState(null)
   const [messages, setMessages] = useState([
-    { role: 'bot', text: 'Hola. Soy el asistente de AMA LLU-IA. Puedes preguntarme sobre verificación de contenido electoral.' }
+    { role: 'bot', text: 'Hola. Soy Kuybot, tu asistente de investigación periodística. Analiza una noticia y puedo ayudarte a contrastarla con contexto y fuentes.' }
   ])
   const [inputMessage, setInputMessage] = useState('')
+  const [kuybotBusy, setKuybotBusy] = useState(false)
   const chatEndRef = useRef(null)
   const fileInputRef = useRef(null)
   const pollingRef = useRef(null)
@@ -75,6 +77,15 @@ function App() {
     { name: 'Falso', value: Math.round((statusCounts.falso / totalAnalyzed) * 100), color: '#E85D5D' }
   ] : []
   const recentHistory = history.slice(0, 5)
+
+  const kuybotSuggestions = [
+    '¿Esta información ha sido verificada?',
+    '¿Qué fuentes respaldan esta noticia?',
+    '¿Qué fuentes contradicen esta información?',
+    '¿Qué dicen las fuentes oficiales?',
+    '¿Existen verificaciones relacionadas?',
+    '¿Qué ocurrió realmente?'
+  ]
 
   const adaptNewsAnalysisResult = (result) => {
     const score = (result.news_reliability_assessment?.score ?? result.analysis?.credibility?.score ?? 0) / 100
@@ -206,13 +217,57 @@ function App() {
     }
   }
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return
-    setMessages(prev => [...prev,
-      { role: 'user', text: inputMessage },
-      { role: 'bot', text: 'Procesando tu consulta sobre verificación electoral. Un momento.' }
-    ])
+  const currentNewsPayload = analysisResult?.raw_news || null
+  const currentNewsContext = currentNewsPayload ? {
+    title: currentNewsPayload.article?.title || currentNewsPayload.analysis?.topic || 'Noticia analizada',
+    summary: currentNewsPayload.analysis?.summary || currentNewsPayload.article?.description || 'Sin resumen disponible.',
+    platform: currentNewsPayload.editorial_metadata?.platform || 'sitio web',
+    publisher: currentNewsPayload.content_attribution?.publisher_name || currentNewsPayload.source_verification?.source_name || currentNewsPayload.article?.source_domain || 'Sin fuente',
+    publicationDate: currentNewsPayload.editorial_metadata?.publication_date || currentNewsPayload.article?.published_at || 'Sin fecha detectada',
+    auditLabel: currentNewsPayload.risk_assessment?.level || currentNewsPayload.audit?.priority || 'sin dato',
+    relatedSources: (currentNewsPayload.related_news || []).slice(0, 4).map(item => ({
+      name: item.source_name || item.source || 'Fuente relacionada',
+      url: item.url
+    })).filter(item => item.url)
+  } : null
+
+  const handleSendMessage = async () => {
+    const trimmed = inputMessage.trim()
+    if (!trimmed || kuybotBusy) return
+
+    const chatHistory = messages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.text || '',
+      text: msg.text || '',
+      sources: Array.isArray(msg.sources) ? msg.sources : [],
+      created_at: new Date().toISOString()
+    }))
+
+    setMessages(prev => [...prev, { role: 'user', text: trimmed, sources: [] }])
     setInputMessage('')
+    setKuybotBusy(true)
+
+    try {
+      const response = await askKuybot({
+        question: trimmed,
+        news: currentNewsPayload,
+        history: chatHistory,
+      })
+
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: response?.answer || 'No recibí una respuesta útil de Kuybot.',
+        sources: Array.isArray(response?.sources) ? response.sources.filter(Boolean) : []
+      }])
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: `No pude completar la consulta. ${err?.message || 'Revisa la conexión con el backend de Noticias.'}`,
+        sources: []
+      }])
+    } finally {
+      setKuybotBusy(false)
+    }
   }
 
   const tabs = [
@@ -1601,81 +1656,198 @@ function App() {
         </div>
       </div>
 
-      {/* Floating Chat Button */}
-      <button
-        onClick={() => setChatOpen(!chatOpen)}
-        className="fixed bottom-5 right-5 w-13 h-13 rounded-full flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 z-50"
-        style={{
-          width: '52px',
-          height: '52px',
-          backgroundColor: chatOpen ? BRAND_NAVY_SOFT : BRAND_ORANGE,
-          color: chatOpen ? '#E8ECF1' : '#FFFFFF',
-          '--tw-ring-color': BRAND_ORANGE,
-          '--tw-ring-offset-color': BRAND_NAVY
-        }}
-        aria-label={chatOpen ? 'Cerrar chat' : 'Abrir chat'}
-      >
-        {chatOpen ? <X className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
-      </button>
+      {/* Floating Kuybot Button */}
+      <div className="fixed bottom-5 right-5 flex flex-col items-center z-50">
+        {!chatOpen && (
+          <div
+            className="relative mb-2 px-3 py-2 rounded-2xl text-[10px] font-semibold shadow-lg"
+            style={{ backgroundColor: '#FFFFFF', color: BRAND_NAVY, border: '1px solid #E9ECEF' }}
+          >
+            <span className="block leading-snug text-center">Soy Kuybot</span>
+            <span className="block leading-snug text-center text-gray-500">Analicemos esta noticia</span>
+            <span className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-white border-b border-r border-slate-200 transform -translate-x-1/2 rotate-45" />
+          </div>
+        )}
+        <button
+          onClick={() => setChatOpen(!chatOpen)}
+          className="rounded-full flex items-center justify-center transition-all overflow-visible"
+          style={{ width: '118px', height: '118px', background: 'transparent', border: 'none' }}
+          aria-label={chatOpen ? 'Cerrar Kuybot' : 'Abrir Kuybot'}
+        >
+          {chatOpen ? (
+            <div
+              className="w-[74px] h-[74px] rounded-full flex items-center justify-center"
+              style={{ backgroundColor: BRAND_ORANGE, color: '#FFFFFF', boxShadow: '0 22px 42px rgba(245,130,43,0.35)' }}
+            >
+              <X className="w-7 h-7" />
+            </div>
+          ) : (
+            <img src={kuybotMascot} alt="Kuybot" className="w-full h-full object-contain drop-shadow-[0_18px_30px_rgba(15,23,42,0.25)]" />
+          )}
+        </button>
+      </div>
 
       {/* Chat Panel */}
       {chatOpen && (
         <div
-          className="fixed bottom-20 right-5 w-[calc(100vw-2.5rem)] md:w-96 h-[420px] rounded-xl flex flex-col z-50 overflow-hidden"
-          style={{
-            backgroundColor: BRAND_NAVY,
-            border: `1px solid ${BRAND_NAVY_SOFT}`
-          }}
+          className="fixed bottom-24 right-5 w-[calc(100vw-1.5rem)] md:w-[420px] h-[520px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}
         >
-          <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: `1px solid ${BRAND_NAVY_SOFT}` }}>
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: BRAND_ORANGE,
-                animation: 'pulse-dot 2s ease-in-out infinite'
-              }}
-            />
-            <h3 className="font-semibold text-sm text-white">Bot - preguntas ciudadanas</h3>
+          <div className="px-4 py-3.5 flex items-center justify-between gap-3" style={{ background: `linear-gradient(135deg, ${BRAND_NAVY}, ${BRAND_NAVY_SOFT})` }}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_ORANGE, animation: 'pulse-dot 2s ease-in-out infinite' }} />
+              <div>
+                <h3 className="font-bold text-sm text-white">KUYBOT</h3>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/70">Asistente de investigación</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setChatOpen(false)}
+              className="rounded-full w-7 h-7 flex items-center justify-center"
+              style={{ backgroundColor: 'rgba(255,255,255,0.10)', color: '#FFFFFF' }}
+              aria-label="Cerrar Kuybot"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5" style={{ backgroundColor: '#F7F9FC' }}>
+            {currentNewsContext ? (
+              <div className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-gray-400">Noticia en análisis</span>
+                  <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase" style={{ backgroundColor: '#F5822B18', color: BRAND_ORANGE }}>
+                    {currentNewsContext.auditLabel}
+                  </span>
+                </div>
+                <p className="text-sm font-bold leading-snug" style={{ color: BRAND_NAVY }}>{currentNewsContext.title}</p>
+                <p className="text-[11px] leading-relaxed mt-2 text-gray-600">
+                  {currentNewsContext.summary.slice(0, 180)}{currentNewsContext.summary.length > 180 ? '...' : ''}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-gray-600">
+                  <div className="rounded-lg p-2 bg-gray-50">
+                    <span className="block font-mono uppercase mb-1 text-gray-400">Plataforma</span>
+                    {currentNewsContext.platform}
+                  </div>
+                  <div className="rounded-lg p-2 bg-gray-50">
+                    <span className="block font-mono uppercase mb-1 text-gray-400">Publicador</span>
+                    {currentNewsContext.publisher}
+                  </div>
+                  <div className="rounded-lg p-2 bg-gray-50 col-span-2">
+                    <span className="block font-mono uppercase mb-1 text-gray-400">Fecha</span>
+                    {currentNewsContext.publicationDate}
+                  </div>
+                </div>
+                {currentNewsContext.relatedSources.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {currentNewsContext.relatedSources.map((item, idx) => (
+                      <a
+                        key={`${item.name}-${idx}`}
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 rounded-full text-[10px] font-medium"
+                        style={{ backgroundColor: '#101B3D10', color: BRAND_NAVY }}
+                      >
+                        {item.name}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                <p className="text-sm font-semibold" style={{ color: BRAND_NAVY }}>Sin noticia activa</p>
+                <p className="text-[11px] mt-1 text-gray-600">Analiza una URL para que Kuybot cargue automáticamente el contexto periodístico.</p>
+              </div>
+            )}
+
+            <div className="rounded-xl p-2.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+              <p className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2 text-gray-400">Preguntas rápidas</p>
+              <div className="flex flex-wrap gap-2">
+                {kuybotSuggestions.map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInputMessage(suggestion)}
+                    className="px-2.5 py-1.5 rounded-full text-[10px] font-medium text-left"
+                    style={{ backgroundColor: '#F5822B18', color: BRAND_NAVY, border: '1px solid #F5822B24' }}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className="max-w-[80%] px-3.5 py-2.5 rounded-lg text-sm leading-relaxed"
+                  className="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line"
                   style={
                     msg.role === 'user'
-                      ? { backgroundColor: BRAND_ORANGE, color: '#FFFFFF', fontWeight: 500 }
-                      : { backgroundColor: BRAND_NAVY_SOFT, color: '#E8ECF1', border: `1px solid ${BRAND_NAVY_SOFT}` }
+                      ? { backgroundColor: BRAND_ORANGE, color: '#FFFFFF', fontWeight: 600 }
+                      : { backgroundColor: '#FFFFFF', color: BRAND_NAVY, border: '1px solid #E9ECEF' }
                   }
                 >
                   {msg.text}
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-3 pt-2 border-t border-gray-100">
+                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2 text-gray-400">Bibliografía</div>
+                      <div className="space-y-1.5">
+                        {msg.sources.slice(0, 6).map((source, sourceIdx) => {
+                          let hostname = source
+                          try {
+                            hostname = new URL(source).hostname.replace('www.', '')
+                          } catch {
+                            hostname = source
+                          }
+                          return (
+                            <a
+                              key={`${source}-${sourceIdx}`}
+                              href={source}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block text-[10px] leading-relaxed break-all underline-offset-2"
+                              style={{ color: BRAND_NAVY }}
+                            >
+                              <span className="font-semibold">{hostname}</span>
+                            </a>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+            {kuybotBusy && (
+              <div className="flex justify-start">
+                <div className="max-w-[82%] px-3 py-2.5 rounded-2xl text-sm" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <Activity className="w-3.5 h-3.5 animate-spin" />
+                    Kuybot está revisando el contexto...
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
-          <div className="p-3" style={{ borderTop: `1px solid ${BRAND_NAVY_SOFT}` }}>
+          <div className="p-3" style={{ borderTop: '1px solid #E9ECEF', backgroundColor: '#FFFFFF' }}>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={e => setInputMessage(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Escribe tu pregunta..."
-                className="flex-1 px-3 py-2.5 rounded-lg text-sm focus:outline-none font-mono"
-                style={{
-                  backgroundColor: BRAND_NAVY_SOFT,
-                  border: `1px solid ${BRAND_NAVY_SOFT}`,
-                  color: '#E8ECF1'
-                }}
-                onFocus={e => e.target.style.borderColor = BRAND_ORANGE}
-                onBlur={e => e.target.style.borderColor = BRAND_NAVY_SOFT}
+                placeholder="Investiga esta noticia conmigo..."
+                className="flex-1 px-3 py-2.5 rounded-xl text-sm focus:outline-none"
+                style={{ backgroundColor: '#F7F9FC', border: '1px solid #E9ECEF', color: BRAND_NAVY }}
+                disabled={kuybotBusy}
               />
               <button
                 onClick={handleSendMessage}
-                className="px-3 py-2.5 rounded-lg transition-all flex items-center justify-center"
+                disabled={kuybotBusy || !inputMessage.trim()}
+                className="px-3 py-2.5 rounded-xl transition-all flex items-center justify-center disabled:opacity-50"
                 style={{
                   backgroundColor: BRAND_ORANGE,
                   color: '#FFFFFF'
