@@ -10,7 +10,279 @@ const BRAND_ORANGE = '#F5822B'
 const BRAND_NAVY = '#101B3D'
 const BRAND_NAVY_SOFT = '#16234E'
 
+// ===== Terminos y Condiciones =====
+// TERMS_VERSION debe incrementarse cada vez que cambie el texto legal,
+// para que el modal se vuelva a mostrar a usuarios que ya habian aceptado una version anterior.
+const TERMS_VERSION = '2026-08-15'
+const TERMS_STORAGE_KEY = 'ama_llu_ia_terms_accepted_version'
+
+const TERMS_META = [
+  'Última actualización: 15 de agosto de 2026',
+  'Aplicativo: AMALLU-IA',
+  'Proyecto: MediaHack — OpenLab'
+]
+
+const TERMS_INTRO = [
+  'Bienvenido/a a AMALLU-IA, una herramienta desarrollada en el marco del proyecto MediaHack de OpenLab, orientada a apoyar el análisis, contraste y comprensión de información difundida en medios digitales y en entornos de internet.',
+  'Al acceder, utilizar o navegar por AMALLU-IA, el usuario declara haber leído, comprendido y aceptado los presentes Términos y Condiciones de Uso. Si no está de acuerdo con ellos, deberá abstenerse de utilizar el servicio.'
+]
+
+const TERMS_SECTIONS = [
+  {
+    title: '1. Descripción del servicio',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA es una solución tecnológica diseñada para ayudar a los usuarios a evaluar información mediante herramientas de análisis automatizado, procesamiento de lenguaje natural, inteligencia artificial y consulta de fuentes disponibles en internet.' },
+      { type: 'p', text: 'Entre sus funciones pueden incluirse, de manera no exhaustiva:' },
+      { type: 'ul', items: [
+        'Análisis de contenido informativo.',
+        'Contraste de información entre fuentes.',
+        'Identificación de posibles inconsistencias, señales de desinformación o contenido cuestionable.',
+        'Generación de resúmenes y contexto relacionado.',
+        'Búsqueda de información asociada.',
+        'Interacción mediante un asistente conversacional basado en inteligencia artificial.'
+      ] },
+      { type: 'p', text: 'El servicio tiene un carácter de apoyo a la comprensión informativa y no sustituye el criterio humano ni la valoración crítica del usuario.' }
+    ]
+  },
+  {
+    title: '2. Naturaleza de los resultados',
+    blocks: [
+      { type: 'p', text: 'Los resultados, análisis, recomendaciones, resúmenes, indicadores o respuestas generadas por AMALLU-IA tienen un carácter informativo, orientativo y de apoyo al análisis.' },
+      { type: 'p', text: 'No deben entenderse como:' },
+      { type: 'ul', items: [
+        'Verificación definitiva de verdad o falsedad.',
+        'Certificación de la autenticidad de una fuente.',
+        'Garantía de exactitud absoluta.',
+        'Sustituto del juicio crítico, la investigación periodística o la verificación documental.'
+      ] },
+      { type: 'p', text: 'Los resultados pueden verse afectados por:' },
+      { type: 'ul', items: [
+        'Limitaciones de las fuentes consultadas.',
+        'Calidad, disponibilidad o actualización de la información.',
+        'Error, sesgo o ambigüedad del contenido original.',
+        'Faltantes de contexto o información incompleta.',
+        'Restricciones técnicas del sistema.',
+        'Limitaciones de los modelos de inteligencia artificial.',
+        'Cambios posteriores en una noticia, publicación o fuente.'
+      ] },
+      { type: 'p', text: 'Por ello, el usuario debe verificar la información con fuentes primarias, confiables y actualizadas antes de asumirla como verdadera o actuar en consecuencia.' }
+    ]
+  },
+  {
+    title: '3. Inteligencia artificial y limitaciones',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA utiliza tecnologías de inteligencia artificial para procesar, interpretar y responder sobre información disponible en fuentes públicas y/o aportadas por el usuario.' },
+      { type: 'p', text: 'Estas tecnologías pueden producir:' },
+      { type: 'ul', items: [
+        'Respuestas incompletas.',
+        'Interpretaciones erróneas.',
+        'Información desactualizada.',
+        'Hallazgos no verificables.',
+        'Errores de contexto o de análisis.'
+      ] },
+      { type: 'p', text: 'El usuario reconoce y acepta que la inteligencia artificial no es infalible y puede presentar sesgos, limitaciones técnicas o errores de razonamiento.' },
+      { type: 'p', text: 'AMALLU-IA se esfuerza por mejorar la calidad de sus resultados mediante contraste de fuentes, análisis contextual y mecanismos de apoyo, pero no garantiza la exactitud absoluta ni la corrección de todos los resultados generados.' }
+    ]
+  },
+  {
+    title: '4. Fuentes de información y contenido externo',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA puede consultar, procesar, analizar o referenciar contenido proveniente de fuentes externas, incluyendo medios digitales, páginas web, APIs de terceros, documentos públicos o materiales disponibles en internet.' },
+      { type: 'p', text: 'La presencia o mención de una fuente en la plataforma no implica que AMALLU-IA garantice, avale, respalde o certifique la totalidad de su contenido ni la veracidad de cada información que la fuente publique.' },
+      { type: 'p', text: 'Las fuentes externas mantienen sus propios derechos, políticas de uso, condiciones de servicio y responsabilidades. AMALLU-IA no controla necesariamente el contenido, la actualización, la veracidad o la disponibilidad de dichas fuentes.' }
+    ]
+  },
+  {
+    title: '5. Uso responsable del servicio',
+    blocks: [
+      { type: 'p', text: 'El usuario se compromete a utilizar AMALLU-IA de manera responsable, ética y conforme a la legislación aplicable.' },
+      { type: 'p', text: 'Queda prohibido utilizar el servicio para:' },
+      { type: 'ul', items: [
+        'Difundir, generar o apoyar deliberadamente información falsa o engañosa.',
+        'Manipular resultados con fines de daño, odio, persecución o desinformación.',
+        'Amenazar, acosar, difamar, injuriar o vulnerar derechos de terceros.',
+        'Realizar actividades ilegales o contrarias a la normativa vigente.',
+        'Obtener acceso no autorizado a sistemas, APIs, datos o servicios.',
+        'Intentar vulnerar la seguridad, integridad o funcionamiento del aplicativo.',
+        'Usar los resultados como única base para decisiones con consecuencias relevantes o de impacto significativo.',
+        'Interferir con el rendimiento, estabilidad o disponibilidad del sistema.'
+      ] },
+      { type: 'p', text: 'AMALLU-IA puede restringir, suspender o cancelar el acceso de un usuario si detecta uso indebido, ilegal o incompatible con estos términos.' }
+    ]
+  },
+  {
+    title: '6. Contenido proporcionado por el usuario',
+    blocks: [
+      { type: 'p', text: 'El usuario puede introducir textos, enlaces, archivos, capturas, imágenes, videos u otros contenidos para su análisis.' },
+      { type: 'p', text: 'Al hacerlo, el usuario declara que:' },
+      { type: 'ul', items: [
+        'Tiene derecho a aportar dicho contenido.',
+        'Su uso para fines de análisis no infringe derechos de terceros.',
+        'No comparte información privada o sensible sin la debida autorización.',
+        'No utiliza el sistema para violar la privacidad de otras personas ni la normativa vigente.'
+      ] },
+      { type: 'p', text: 'El usuario es responsable del contenido que ingresa al sistema, así como de las consecuencias derivadas de su uso.' },
+      { type: 'p', text: 'AMALLU-IA no será responsable por el contenido suministrado directamente por el usuario ni por los efectos que dicho contenido pueda generar en terceros.' }
+    ]
+  },
+  {
+    title: '7. Protección de datos y privacidad',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA reconoce la importancia de la protección de datos personales y la confidencialidad de la información tratada mediante la plataforma.' },
+      { type: 'p', text: 'El servicio deberá operar conforme a la normativa aplicable en materia de protección de datos personales, así como a las políticas internas del proyecto.' },
+      { type: 'p', text: 'Se recomienda al usuario:' },
+      { type: 'ul', items: [
+        'No ingresar información personal sensible innecesaria.',
+        'No compartir datos de terceros sin consentimiento.',
+        'No utilizar el sistema para procesar información confidencial de forma irresponsable.'
+      ] },
+      { type: 'p', text: 'Cuando corresponda, el proyecto podrá informar al usuario sobre la finalidad del tratamiento de datos, plazos, almacenamiento, uso interno y mecanismos disponibles para ejercer derechos previstos por la normativa aplicable.' }
+    ]
+  },
+  {
+    title: '8. Seguridad y disponibilidad',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA implementa medidas técnicas y operativas razonables para proteger la integridad, confidencialidad y disponibilidad del servicio. Sin embargo, ningún sistema conectado a internet puede garantizar una seguridad absoluta.' },
+      { type: 'p', text: 'El equipo del proyecto no puede asegurar que el sistema esté libre de fallos, interrupciones, accesos no autorizados o errores técnicos.' },
+      { type: 'p', text: 'Por ello, el sistema puede experimentar:' },
+      { type: 'ul', items: [
+        'Interrupciones temporales.',
+        'Cambios de funcionamiento.',
+        'Errores o inconsistencias.',
+        'Despliegues de mejoras o correcciones.',
+        'Fallas de servicios externos o dependencias de terceros.',
+        'Problemas de conectividad o infraestructura.'
+      ] },
+      { type: 'p', text: 'AMALLU-IA puede modificar, suspender o retirar funcionalidades sin previo aviso, especialmente en fases de desarrollo, prueba o demostración.' }
+    ]
+  },
+  {
+    title: '9. Prototipo y naturaleza del proyecto',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA es un proyecto desarrollado dentro del marco del hackatón MediaHack de OpenLab y puede encontrarse en fase de prototipo, validación o mejora continua.' },
+      { type: 'p', text: 'Por tanto, el servicio puede estar sujeto a cambios, experimentación, evolución técnica y ajustes funcionales.' },
+      { type: 'p', text: 'La disponibilidad de una funcionalidad en una etapa concreta no garantiza que permanezca activa de manera indefinida ni que se mantenga en su versión actual.' }
+    ]
+  },
+  {
+    title: '10. Servicios de terceros y APIs',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA puede depender de herramientas, plataformas, APIs o servicios de terceros para funcionalidades de análisis, búsqueda, almacenamiento, autentificación, procesamiento de contenido o generación de respuestas.' },
+      { type: 'p', text: 'El uso de dichos servicios está sujeto a sus propios términos, condiciones, políticas y restricciones, que el usuario acepta de manera indirecta al utilizar AMALLU-IA.' },
+      { type: 'p', text: 'El proyecto no garantiza la continuidad, disponibilidad ni rendimiento de herramientas externas, ni asume responsabilidad por fallas, interrupciones o decisiones tomadas por terceros.' }
+    ]
+  },
+  {
+    title: '11. Propiedad intelectual',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA, su código, estructura, diseño, interfaz, marca, nombre, componentes desarrollados por el proyecto y su contenido original pertenecen a sus correspondientes titulares, conforme a la normativa aplicable.' },
+      { type: 'p', text: 'Los contenidos generados por terceros, incluidos textos, imágenes, videos, publicaciones, noticias, materiales periodísticos y demás fuentes citadas o consultadas, son propiedad de sus autores o titulares de derechos respectivos.' },
+      { type: 'p', text: 'AMALLU-IA no reclama propiedad sobre contenidos ajenos simplemente por referenciarlos, analizarlos o incluirlos en la plataforma, salvo que exista una expresión legal específica a favor del proyecto.' },
+      { type: 'p', text: 'El usuario no deberá reproducir, distribuir, reutilizar ni explotar el contenido o la interfaz del servicio sin la autorización correspondiente.' }
+    ]
+  },
+  {
+    title: '12. Limitación de responsabilidad',
+    blocks: [
+      { type: 'p', text: 'En la máxima medida permitida por la ley, AMALLU-IA y sus desarrolladores, colaboradores o instituciones asociadas no serán responsables por:' },
+      { type: 'ul', items: [
+        'Daños directos, indirectos, incidentales, consecuentes o punitivos derivados del uso del servicio.',
+        'Decisiones tomadas por el usuario sobre la base exclusiva de los resultados del sistema.',
+        'Pérdidas, perjuicios o consecuencias provocadas por información inexacta, incompleta o engañosa.',
+        'Fallas, errores, interrupciones o indisponibilidad del servicio.',
+        'Uso indebido del sistema por terceros.',
+        'Impactos derivados de contenidos o servicios de terceros.'
+      ] },
+      { type: 'p', text: 'El usuario reconoce que el uso del servicio es bajo su responsabilidad exclusiva y que debe aplicar criterio propio, verificaciones adicionales y juicio profesional cuando corresponda.' }
+    ]
+  },
+  {
+    title: '13. Exclusión de responsabilidad en decisiones de alto impacto',
+    blocks: [
+      { type: 'p', text: 'Los resultados generados por AMALLU-IA no deben utilizarse como única base para decisiones de alto impacto o consecuencias relevantes, tales como:' },
+      { type: 'ul', items: [
+        'Decisiones legales.',
+        'Decisiones médicas.',
+        'Decisiones financieras.',
+        'Evaluaciones de empleo o contratación.',
+        'Decisiones políticas o institucionales.',
+        'Acciones de reputación o sanción.',
+        'Cualquier decisión con efectos sustanciales para terceros.'
+      ] },
+      { type: 'p', text: 'El sistema es una herramienta de apoyo y no reemplaza la investigación humana, la valoración de expertos ni la verificación documental.' }
+    ]
+  },
+  {
+    title: '14. Modificaciones de los Términos',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA puede modificar estos Términos y Condiciones en cualquier momento para reflejar:' },
+      { type: 'ul', items: [
+        'Cambios funcionales del servicio.',
+        'Ajustes técnicos o legales.',
+        'Actualizaciones de políticas de privacidad o seguridad.',
+        'Cambios en servicios de terceros.',
+        'Mejora del funcionamiento del proyecto.'
+      ] },
+      { type: 'p', text: 'La versión vigente será la publicada dentro del aplicativo o en la plataforma donde se ofrezca el servicio. El uso continuado del servicio después de cambios implica la aceptación de los nuevos términos.' }
+    ]
+  },
+  {
+    title: '15. Terminación del acceso',
+    blocks: [
+      { type: 'p', text: 'AMALLU-IA puede, a su criterio, suspender o cancelar el acceso del usuario cuando se detecten:' },
+      { type: 'ul', items: [
+        'Incumplimiento de estos Términos.',
+        'Uso indebido o malicioso del servicio.',
+        'Violación de la normativa aplicable.',
+        'Riesgo para la integridad, seguridad o continuidad del proyecto.'
+      ] },
+      { type: 'p', text: 'El usuario podrá dejar de usar el servicio en cualquier momento.' }
+    ]
+  },
+  {
+    title: '16. Ley aplicable y jurisdicción',
+    blocks: [
+      { type: 'p', text: 'Estos Términos y Condiciones se rigen por la legislación aplicable en Ecuador, sin perjuicio de la normativa internacional o sectorial que pueda resultar aplicable en función del uso o de la ubicación del usuario y del proyecto.' },
+      { type: 'p', text: 'En caso de disputa, las partes podrán intentar una solución amistosa antes de recurrir a mecanismos jurisdiccionales.' }
+    ]
+  },
+  {
+    title: '17. Aceptación',
+    blocks: [
+      { type: 'p', text: 'Al aceptar estos Términos y Condiciones, al continuar utilizando AMALLU-IA o al acceder a sus funcionalidades, el usuario declara haber leído, entendido y aceptado todas las disposiciones aquí establecidas.' },
+      { type: 'p', text: 'Si el usuario no acepta estos términos, debe abstenerse de utilizar el servicio.' }
+    ]
+  },
+  {
+    title: '18. Contacto',
+    blocks: [
+      { type: 'p', text: 'Para consultas, sugerencias, reportes o comentarios sobre el uso del servicio, el usuario puede contactarse con el equipo del proyecto a través de los canales habilitados por MediaHack — OpenLab.' }
+    ]
+  }
+]
+
+const TERMS_CLOSING = []
+
 function App() {
+  const [termsAccepted, setTermsAccepted] = useState(() => {
+    try {
+      return localStorage.getItem(TERMS_STORAGE_KEY) === TERMS_VERSION
+    } catch {
+      return false
+    }
+  })
+  const [termsExpanded, setTermsExpanded] = useState(false)
+  const [termsChecked, setTermsChecked] = useState(false)
+
+  const handleAcceptTerms = () => {
+    try {
+      localStorage.setItem(TERMS_STORAGE_KEY, TERMS_VERSION)
+    } catch {
+      // localStorage no disponible (modo privado, cuota llena, etc.) - se volvera a pedir la proxima vez
+    }
+    setTermsAccepted(true)
+  }
+
   const [activeView, setActiveView] = useState('home')
   const [activeTab, setActiveTab] = useState('link')
   const [chatOpen, setChatOpen] = useState(false)
@@ -544,6 +816,125 @@ function App() {
 
   return (
     <div className="min-h-screen px-4 py-6 md:py-12" style={{ backgroundColor: '#FFFFFF' }}>
+      {/* ===== MODAL TERMINOS Y CONDICIONES (bloqueante hasta aceptar) ===== */}
+      {!termsAccepted && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(16,27,61,0.65)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="terms-modal-title"
+        >
+          <div
+            className="w-full max-w-xl rounded-xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ backgroundColor: '#FFFFFF', maxHeight: '90vh' }}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b flex-shrink-0" style={{ borderColor: '#E9ECEF' }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: BRAND_ORANGE + '1A' }}>
+                <Scale className="w-5 h-5" style={{ color: BRAND_ORANGE }} />
+              </div>
+              <div>
+                <h2 id="terms-modal-title" className="text-base font-bold" style={{ color: BRAND_NAVY }}>Términos y Condiciones de Uso</h2>
+                <p className="text-xs text-gray-500">Debes leerlos y aceptarlos para continuar</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4 overflow-hidden flex-1 min-h-0 flex flex-col">
+              <div className="relative flex-1 min-h-0">
+                <div
+                  className={termsExpanded ? 'overflow-y-auto pr-1 h-full' : 'overflow-hidden'}
+                  style={!termsExpanded ? { maxHeight: '190px' } : undefined}
+                >
+                  {TERMS_META.map((line, i) => (
+                    <p key={i} className="text-xs text-gray-500">{line}</p>
+                  ))}
+                  <div className="my-3 border-t" style={{ borderColor: '#E9ECEF' }} />
+                  {TERMS_INTRO.map((t, i) => (
+                    <p key={i} className="text-sm text-gray-700 mb-3 leading-relaxed">{t}</p>
+                  ))}
+                  {TERMS_SECTIONS.map((sec, i) => (
+                    <div key={i} className="mb-4">
+                      <h4 className="text-sm font-bold mb-1.5" style={{ color: BRAND_NAVY }}>{sec.title}</h4>
+                      {sec.blocks.map((b, j) => (
+                        b.type === 'ul' ? (
+                          <ul key={j} className="list-disc pl-5 mb-2 space-y-1">
+                            {b.items.map((it, k) => (
+                              <li key={k} className="text-sm text-gray-700 leading-relaxed">{it}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p key={j} className="text-sm text-gray-700 mb-2 leading-relaxed">{b.text}</p>
+                        )
+                      ))}
+                    </div>
+                  ))}
+                  {TERMS_CLOSING.length > 0 && (
+                    <div className="mt-2 pt-4 border-t text-center" style={{ borderColor: '#E9ECEF' }}>
+                      {TERMS_CLOSING.map((t, i) => (
+                        <p key={i} className={i === 0 ? 'text-sm font-bold' : 'text-xs text-gray-500'} style={i === 0 ? { color: BRAND_NAVY } : undefined}>{t}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {!termsExpanded && (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 h-14 pointer-events-none"
+                    style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0), #FFFFFF)' }}
+                  />
+                )}
+              </div>
+              {!termsExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setTermsExpanded(true)}
+                  className="mt-2 text-sm font-semibold text-left flex-shrink-0"
+                  style={{ color: BRAND_ORANGE }}
+                >
+                  Leer más ↓
+                </button>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t px-6 py-4 flex-shrink-0" style={{ borderColor: '#E9ECEF', backgroundColor: '#F8F9FA' }}>
+              <label className={`flex items-start gap-2.5 ${termsExpanded ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                <input
+                  type="checkbox"
+                  checked={termsChecked}
+                  disabled={!termsExpanded}
+                  onChange={(e) => setTermsChecked(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded flex-shrink-0"
+                  style={{ accentColor: BRAND_ORANGE }}
+                />
+                <span className="text-sm text-gray-700">
+                  He leído y acepto los <strong>Términos y Condiciones de Uso</strong> de AMALLU-IA.
+                </span>
+              </label>
+              {!termsExpanded && (
+                <p className="text-xs mt-1.5 ml-[26px]" style={{ color: BRAND_ORANGE }}>
+                  Despliega "Leer más" para leer el documento completo antes de aceptar.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleAcceptTerms}
+                disabled={!termsChecked}
+                className="mt-3 w-full py-2.5 rounded-lg text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: termsChecked ? BRAND_ORANGE : '#E9ECEF',
+                  color: termsChecked ? '#FFFFFF' : '#9CA3AF',
+                  cursor: termsChecked ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Aceptar y continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[1200px] mx-auto">
         {/* ===== HEADER ===== */}
         <header className="mb-6">
