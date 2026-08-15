@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -28,11 +29,11 @@ class Settings(BaseSettings):
     video_confidence_threshold: float = 0.7
     
     # CORS
-    cors_origins: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://coarico.github.io"
-    ]
+    cors_origins_raw: str = Field(
+        default="http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,https://coarico.github.io,https://amallulia.vercel.app",
+        validation_alias="CORS_ORIGINS",
+    )
+    cors_origin_regex: str | None = None
     
     # Google APIs
     google_application_credentials: str = "./google-credentials.json"
@@ -56,6 +57,16 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     
+    # yt-dlp options
+    ytdlp_proxy_url: str = ""
+    ytdlp_cookies_file: str = ""
+
+    # URL downloader provider
+    download_provider: str = "local"  # local | external
+    download_worker_url: str = ""
+    download_worker_api_key: str = ""
+    download_worker_timeout_seconds: int = 120
+
     # Firebase Firestore
     firebase_credentials_path: str = "./Secret/base-mediahackii-dde4ddaa87de.json"
     firebase_project_id: str = "base-mediahackii"
@@ -63,6 +74,10 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    @property
+    def cors_origins(self) -> List[str]:
+        return [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]
 
 
 settings = Settings()

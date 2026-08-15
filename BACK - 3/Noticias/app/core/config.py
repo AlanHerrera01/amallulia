@@ -34,7 +34,7 @@ def _load_dotenv() -> None:
 @dataclass(frozen=True)
 class Settings:
     app_env: str = "local"
-    cors_origins_raw: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins_raw: str = "http://localhost:5173,http://127.0.0.1:5173,https://amallulia.vercel.app"
     cors_origin_regex: str | None = None
     llm_provider: str = "auto"
     llm_fallback_on_error: bool = True
@@ -62,6 +62,7 @@ class Settings:
     news_rss_timeout_seconds: float = 6
     duckduckgo_fallback_query_limit: int = 2
     duckduckgo_timeout_seconds: float = 4
+    related_search_time_budget_seconds: float = 15
     request_timeout_seconds: float = 12
     max_html_bytes: int = 2_000_000
     max_article_chars: int = 24_000
@@ -81,7 +82,7 @@ def get_settings() -> Settings:
         raise RuntimeError(f"LLM_PROVIDER invalido: {llm_provider}. Usa auto, groq, openai o none.")
     return Settings(
         app_env=_env("APP_ENV", "local"),
-        cors_origins_raw=_env("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+        cors_origins_raw=_env("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://amallulia.vercel.app"),
         cors_origin_regex=_env_optional("CORS_ORIGIN_REGEX"),
         llm_provider=llm_provider,
         llm_fallback_on_error=_env_bool("LLM_FALLBACK_ON_ERROR", True),
@@ -109,6 +110,7 @@ def get_settings() -> Settings:
         news_rss_timeout_seconds=float(_env("NEWS_RSS_TIMEOUT_SECONDS", "6")),
         duckduckgo_fallback_query_limit=int(_env("DUCKDUCKGO_FALLBACK_QUERY_LIMIT", "2")),
         duckduckgo_timeout_seconds=float(_env("DUCKDUCKGO_TIMEOUT_SECONDS", "4")),
+        related_search_time_budget_seconds=float(_env("RELATED_SEARCH_TIME_BUDGET_SECONDS", "15")),
         request_timeout_seconds=float(_env("REQUEST_TIMEOUT_SECONDS", "12")),
         max_html_bytes=int(_env("MAX_HTML_BYTES", "2000000")),
         max_article_chars=int(_env("MAX_ARTICLE_CHARS", "24000")),
