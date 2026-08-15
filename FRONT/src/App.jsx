@@ -1189,10 +1189,28 @@ function App() {
             </div>
             <p className="text-xs leading-relaxed text-center text-gray-600 -mt-2">{confidenceCaption}</p>
 
+            {result.news_reliability_assessment && (
+              <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
+                <p className="text-xs font-bold text-gray-900 mb-1">¿Por qué {safeScore}% de confiabilidad?</p>
+                <p className="text-xs leading-relaxed text-gray-600">{result.news_reliability_assessment.explanation}</p>
+                {result.news_reliability_assessment.factors?.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {result.news_reliability_assessment.factors.map((f, i) => (
+                      <li key={i} className="text-xs text-gray-600 flex gap-1.5">
+                        <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: BRAND_ORANGE }} />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
               <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
-                <p className="text-xs text-gray-500">Fuente</p>
-                <p className="text-sm font-semibold text-gray-900">{humanSourceStatus}</p>
+                <p className="text-xs text-gray-500">Medio de comunicación</p>
+                <p className="text-sm font-semibold text-gray-900">{sourceLabel}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{humanSourceStatus}</p>
               </div>
               <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
                 <p className="text-xs text-gray-500">Impacto de genero</p>
