@@ -543,63 +543,6 @@ const classifyMediaContent = (raw) => {
   return { label: 'Sin clasificar', reasons }
 }
 
-// ===== Resumen del analisis (solo Front) =====
-// Junta el sentimiento real que devuelve el Back con indicadores compuestos
-// (narrativa dominante, oportunismo electoral, busca desconfianza/indignacion)
-// calculados siempre a partir de scores reales ya existentes (sesgo, clickbait,
-// credibilidad, confiabilidad, relevancia electoral) - nunca numeros inventados.
-const SENTIMENT_META = {
-  negativo: { emoji: '🔴', color: '#E85D5D', label: 'Negativo' },
-  mixto: { emoji: '🟠', color: '#E8A33D', label: 'Mixto' },
-  positivo: { emoji: '🟢', color: '#00C896', label: 'Positivo' },
-  neutral: { emoji: '🟡', color: '#7A8290', label: 'Neutral' }
-}
-
-const scoreEmoji = (score) => (score >= 70 ? '🔴' : score >= 40 ? '🟠' : '🟡')
-const scoreColor = (score) => (score >= 70 ? '#E85D5D' : score >= 40 ? '#E8A33D' : '#D4B106')
-
-const buildAnalysisSummary = (raw) => {
-  const sentiment = raw?.analysis?.sentiment
-  const disinfo = classifyNewsContent(raw)
-  const bias = raw?.analysis?.bias_analysis
-  const clickbait = raw?.analysis?.clickbait
-  const manipulationSignals = raw?.analysis?.manipulation_signals || []
-  const relevance = raw?.information_relevance
-
-  const sentimentMeta = sentiment ? (SENTIMENT_META[sentiment.label] || SENTIMENT_META.neutral) : null
-  const sentimentScore = sentiment ? Math.round(sentiment.score * 100) : null
-
-  const narrativeConfidence = Math.round(disinfo.confidence ?? 0)
-
-  let electoral = null
-  if (relevance?.domain === 'electoral') {
-    const parts = [relevance.relevance_score ?? 0, bias?.score ?? 0, clickbait?.score ?? 0]
-    const electoralScore = Math.round(parts.reduce((a, b) => a + b, 0) / parts.length)
-    electoral = { score: electoralScore, emoji: scoreEmoji(electoralScore), color: scoreColor(electoralScore) }
-  }
-
-  const manipulationBoost = Math.min(30, manipulationSignals.length * 10)
-  const negativeBoost = sentiment?.label === 'negativo' ? Math.round(sentiment.score * 30) : 0
-  const distrustScore = Math.max(0, Math.min(100, Math.round((clickbait?.score ?? 0) * 0.5 + manipulationBoost + negativeBoost)))
-
-  const narrativeText = bias?.explanation || raw?.analysis?.recommendation || null
-
-  const verifiableClaims = raw?.verifiable_claims || []
-  const needsVerification = verifiableClaims.filter(c => c.needs_external_verification).length
-  const keyNote = verifiableClaims.length > 0
-    ? `${needsVerification} de ${verifiableClaims.length} afirmación(es) del artículo requieren verificación externa antes de asumirse como hecho. La interpretación de intención (ej. "oportunismo", "conveniencia") es una lectura de este análisis, no un hecho demostrado.`
-    : 'La interpretación de intención (ej. "oportunismo", "conveniencia") es una lectura de este análisis, no un hecho demostrado.'
-
-  return {
-    sentiment: sentiment ? { label: sentimentMeta.label, score: sentimentScore, emoji: sentimentMeta.emoji, color: sentimentMeta.color } : null,
-    narrative: { label: disinfo.label, confidence: narrativeConfidence, emoji: scoreEmoji(narrativeConfidence), color: scoreColor(narrativeConfidence) },
-    electoral,
-    distrust: { score: distrustScore, emoji: scoreEmoji(distrustScore), color: scoreColor(distrustScore) },
-    narrativeText,
-    keyNote
-  }
-}
-
 // Formatea fechas de publicacion evitando el bug clasico de mostrar una hora
 // fantasma: un string de solo fecha ("2026-08-14") se interpreta como
 // medianoche UTC, y al forzar timeZone America/Guayaquil (UTC-5) eso se ve
@@ -814,7 +757,6 @@ function App() {
     kind: 'news',
     contentType: classifyNewsContent(raw),
     narrativeRubric: evaluateNarrativeRubric(raw),
-    analysisSummary: buildAnalysisSummary(raw),
     reliability: raw.news_reliability_assessment || null,
     sourceVerification: raw.source_verification || null,
     sourceClassification: raw.source_classification ? {
@@ -1172,7 +1114,6 @@ function App() {
     const keywords = result.analysis?.keywords || article.keywords || []
     const reviewBlock = (result.audit?.presentation_blocks || []).find(block => block.title === 'Recomendaciones para revisar')
     const summary = result.analysis?.summary || article.description || 'Sin resumen disponible.'
-    const analysisSummary = buildAnalysisSummary(result)
     const isElectoral = Boolean(result.electoral_relevance?.is_electoral || result.analysis?.is_electoral)
     const safeScore = Math.max(0, Math.min(100, Number(score) || 0))
     const confidenceData = [
@@ -1261,43 +1202,6 @@ function App() {
               </div>
             )}
 
-            <div className="rounded-lg p-4 border" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
-              <h4 className="text-sm font-bold text-gray-900 mb-3">Resumen del análisis</h4>
-              <div className="space-y-1.5 mb-4">
-                {analysisSummary.sentiment && (
-                  <p className="text-sm text-gray-800">
-                    {analysisSummary.sentiment.emoji} Sentimiento: <span className="font-semibold">{analysisSummary.sentiment.label}</span> — {analysisSummary.sentiment.score}%
-                  </p>
-                )}
-                <p className="text-sm text-gray-800">
-                  {analysisSummary.narrative.emoji} Narrativa dominante: <span className="font-semibold">{analysisSummary.narrative.label}</span> — {analysisSummary.narrative.confidence}%
-                </p>
-                {analysisSummary.electoral && (
-                  <p className="text-sm text-gray-800">
-                    {analysisSummary.electoral.emoji} Conveniencia u oportunismo electoral: {analysisSummary.electoral.score}%
-                  </p>
-                )}
-                <p className="text-sm text-gray-800">
-                  {analysisSummary.distrust.emoji} Busca generar desconfianza/indignación: {analysisSummary.distrust.score}%
-                </p>
-              </div>
-
-              {analysisSummary.narrativeText && (
-                <div className="mb-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1">¿Qué busca instalar? / Narrativa</p>
-                  <p className="text-sm text-gray-700 leading-relaxed">{analysisSummary.narrativeText}</p>
-                </div>
-              )}
-
-              <p className="text-xs text-gray-600 leading-relaxed flex gap-1.5">
-                <span>⚠️</span>
-                <span><span className="font-semibold">Clave:</span> {analysisSummary.keyNote}</span>
-              </p>
-
-              <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
-                El sentimiento es calculado por la IA. Los demás indicadores son un resumen del Front construido a partir de scores reales del análisis (sesgo, clickbait, credibilidad, confiabilidad, relevancia electoral) y no son un juicio directo del modelo.
-              </p>
-            </div>
 
             <div className="grid md:grid-cols-3 gap-3 rounded-lg p-3" style={{ backgroundColor: '#F8F9FA' }}>
               <div>
@@ -1529,41 +1433,6 @@ function App() {
               <li key={i} className="text-xs" style={detailMutedStyle}>· {r}</li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {d.analysisSummary && (
-        <div className="rounded-lg p-3" style={detailCardStyle}>
-          <span className="text-xs font-semibold" style={detailLabelStyle}>Resumen del análisis</span>
-          <div className="space-y-1 mt-1.5">
-            {d.analysisSummary.sentiment && (
-              <p className="text-xs" style={detailMutedStyle}>
-                {d.analysisSummary.sentiment.emoji} Sentimiento: <span style={detailLabelStyle}>{d.analysisSummary.sentiment.label}</span> — {d.analysisSummary.sentiment.score}%
-              </p>
-            )}
-            <p className="text-xs" style={detailMutedStyle}>
-              {d.analysisSummary.narrative.emoji} Narrativa dominante: <span style={detailLabelStyle}>{d.analysisSummary.narrative.label}</span> — {d.analysisSummary.narrative.confidence}%
-            </p>
-            {d.analysisSummary.electoral && (
-              <p className="text-xs" style={detailMutedStyle}>
-                {d.analysisSummary.electoral.emoji} Conveniencia u oportunismo electoral: {d.analysisSummary.electoral.score}%
-              </p>
-            )}
-            <p className="text-xs" style={detailMutedStyle}>
-              {d.analysisSummary.distrust.emoji} Busca generar desconfianza/indignación: {d.analysisSummary.distrust.score}%
-            </p>
-          </div>
-
-          {d.analysisSummary.narrativeText && (
-            <div className="mt-2 pt-2" style={{ borderTop: '1px solid #1C2A52' }}>
-              <span className="text-xs font-semibold" style={detailLabelStyle}>¿Qué busca instalar? / Narrativa</span>
-              <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.analysisSummary.narrativeText}</p>
-            </div>
-          )}
-
-          <p className="text-xs mt-2 leading-relaxed" style={detailMutedStyle}>
-            ⚠️ <span style={detailLabelStyle}>Clave:</span> {d.analysisSummary.keyNote}
-          </p>
         </div>
       )}
 
