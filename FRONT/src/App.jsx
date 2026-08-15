@@ -600,6 +600,30 @@ const buildAnalysisSummary = (raw) => {
   }
 }
 
+// Formatea fechas de publicacion evitando el bug clasico de mostrar una hora
+// fantasma: un string de solo fecha ("2026-08-14") se interpreta como
+// medianoche UTC, y al forzar timeZone America/Guayaquil (UTC-5) eso se ve
+// como "13 ago, 7:00 p. m." del dia anterior. Si no hay hora real en el dato,
+// no se muestra hora; si el dato no trae zona horaria explicita, tampoco se
+// reconvierte para no desplazarlo un segunda vez.
+const formatPublicationDate = (raw) => {
+  if (!raw) return null
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (dateOnlyMatch) {
+    const [, y, m, d] = dateOnlyMatch
+    const localDate = new Date(Number(y), Number(m) - 1, Number(d))
+    return new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium' }).format(localDate)
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  const hasExplicitTz = /Z$|[+-]\d{2}:?\d{2}$/.test(raw)
+  return new Intl.DateTimeFormat('es-EC', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    ...(hasExplicitTz ? { timeZone: 'America/Guayaquil' } : {})
+  }).format(parsed)
+}
+
 function App() {
   const [termsAccepted, setTermsAccepted] = useState(() => {
     try {
@@ -1156,20 +1180,12 @@ function App() {
     const publisherType = editorial.publisher_type || source.source_type || 'sin clasificar'
     const contentType = result.content_classification?.type || urlCheck.content_type || 'sin dato'
     const genderState = gender.status || gender.level || 'sin dato'
-    const llm = result.llm_execution || {}
-    const llmStatus = llm.status === 'used' ? 'LLM usado' : llm.status === 'fallback' ? 'Fallback local' : 'IA no usada'
     const humanContentType = contentType === 'noticia' ? 'Noticia' : contentType === 'social_post' ? 'Publicacion social' : 'Contenido por revisar'
     const humanPublisherType = publisherType === 'medio_comunicacion' ? 'Medio de comunicacion' : publisherType === 'usuario_cuenta_personal' ? 'Cuenta personal' : publisherType.replaceAll('_', ' ')
     const humanSourceStatus = source.status === 'radar_media' ? 'Medio en radar' : source.status === 'registered_media' ? 'Medio registrado' : source.status === 'ifcn_verified' ? 'Verificador IFCN' : 'Fuente sin registro'
     const humanGenderState = genderState === 'sin_senales_relevantes' ? 'Sin senales relevantes' : genderState === 'senales_para_revision' ? 'Senales para revision' : genderState === 'alerta_impacto_genero' ? 'Alerta de impacto de genero' : 'Sin dato'
     const rawPublicationDate = editorial.publication_date || article.published_at
-    const dateLabel = rawPublicationDate
-      ? new Intl.DateTimeFormat('es-EC', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-          timeZone: 'America/Guayaquil',
-        }).format(new Date(rawPublicationDate))
-      : 'Fecha de la noticia no detectada'
+    const dateLabel = formatPublicationDate(rawPublicationDate) || 'Fecha de la noticia no detectada'
     const isUpdatingRelated = result.status === 'processing'
     const confidenceCaption = isUpdatingRelated
       ? 'Actualizando con cobertura relacionada'
@@ -1447,11 +1463,6 @@ function App() {
                 {Array.isArray(gender.signals) && gender.signals.length > 0 && (
                   <p className="text-xs text-gray-600 mt-1">{gender.signals.slice(0, 3).join(', ')}</p>
                 )}
-              </div>
-              <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
-                <p className="text-xs text-gray-500">Analisis IA</p>
-                <p className="text-sm font-semibold text-gray-900">{llm.status === 'used' ? 'Analisis aplicado' : llmStatus}</p>
-                <p className="text-xs text-gray-600 mt-1">Las recomendaciones de revision estan en el panel principal.</p>
               </div>
             </div>
           </aside>
