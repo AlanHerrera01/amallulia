@@ -512,7 +512,7 @@ function App() {
     audit: raw.audit ? {
       priority: raw.audit.priority,
       evidence_summary: raw.audit.evidence_summary,
-      evidence_items: (raw.audit.evidence_items || []).slice(0, 14).map(e => ({
+      evidence_items: (raw.audit.evidence_items || []).slice(0, 30).map(e => ({
         type: e.type,
         label: e.label,
         value: truncateText(e.value, 160),
