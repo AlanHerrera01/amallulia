@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react'
-import { MessageCircle, X, Send, Link as LinkIcon, Upload, ClipboardList, Search, AlertTriangle, CheckCircle2, XCircle, Activity, Info, TrendingUp, BookOpen, Home, Landmark, Scale, Users, ArrowRight } from 'lucide-react'
+import { MessageCircle, X, Send, Link as LinkIcon, Upload, ClipboardList, Search, AlertTriangle, CheckCircle2, XCircle, Activity, Info, TrendingUp, BookOpen, Home, Landmark, Scale, Users, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import { analyzeNewsUrl, getNewsAnalysis, askKuybot, analyzeMediaUrl, analyzeAudio, analyzeVideo } from './services/api'
 import logo from './assets/logo.jpeg'
@@ -317,9 +317,25 @@ function App() {
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
       } catch {
-        // localStorage no disponible (modo privado, cuota llena, etc.) - no bloquea el analisis
+        try {
+          // Sin espacio para el detalle completo: guardamos solo el resumen de cada analisis
+          const lightweight = updated.map(({ detail, ...rest }) => rest)
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(lightweight))
+        } catch {
+          // localStorage no disponible (modo privado, cuota llena, etc.) - no bloquea el analisis
+        }
       }
       return updated
+    })
+  }
+
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState(() => new Set())
+  const toggleHistoryExpanded = (id) => {
+    setExpandedHistoryIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
   }
 
@@ -332,11 +348,11 @@ function App() {
   }, [])
 
   const criterios = [
-    { title: 'Fuente verificada', desc: 'Origen y autoría del contenido' },
-    { title: 'Coherencia del contenido', desc: 'Consistencia interna y contextual' },
-    { title: 'Cruce con medios oficiales', desc: 'Corroboración con fuentes institucionales' },
-    { title: '% campaña de bots/réplicas/fuentes', desc: 'Patrones de propagación artificial' },
-    { title: 'Viralidad vs veracidad', desc: 'Velocidad de difusión vs confirmación' }
+    { title: 'Verificación de la fuente', desc: 'Coincidencia con medios Radar, registro interno o redes de verificación (IFCN)' },
+    { title: 'Confiabilidad técnica del URL', desc: 'HTTPS, redirecciones y accesibilidad del dominio' },
+    { title: 'Calidad y estructura del contenido', desc: 'Autoría, fecha, fuentes citadas y coherencia del texto' },
+    { title: 'Señales de manipulación y sesgo', desc: 'Clickbait, sesgo editorial y señales de manipulación detectadas' },
+    { title: 'Cruce con cobertura relacionada', desc: 'Fuentes independientes y medios Radar que cubren la misma noticia' }
   ]
 
   // Estadisticas reales derivadas del historial (nada de datos ficticios)
@@ -403,6 +419,87 @@ function App() {
     }
   }
 
+  const truncateText = (text, max = 500) => {
+    if (!text) return ''
+    return text.length > max ? `${text.slice(0, max)}…` : text
+  }
+
+  // Extrae del resultado completo del Back solo lo necesario para mostrar el
+  // detalle del analisis en Auditoria, evitando guardar textos muy largos (articulo completo, etc.)
+  const buildNewsHistoryDetail = (raw) => ({
+    kind: 'news',
+    reliability: raw.news_reliability_assessment || null,
+    sourceVerification: raw.source_verification || null,
+    sourceClassification: raw.source_classification ? {
+      communication_type: raw.source_classification.communication_type,
+      is_radar_media: raw.source_classification.is_radar_media,
+      explanation: raw.source_classification.explanation
+    } : null,
+    urlTrust: raw.url_trust_assessment || null,
+    contentQuality: raw.content_quality || null,
+    analysis: raw.analysis ? {
+      summary: truncateText(raw.analysis.summary, 500),
+      topic: raw.analysis.topic,
+      category: raw.analysis.category,
+      sentiment: raw.analysis.sentiment,
+      bias_analysis: raw.analysis.bias_analysis,
+      clickbait: raw.analysis.clickbait,
+      credibility: raw.analysis.credibility,
+      manipulation_signals: raw.analysis.manipulation_signals || [],
+      recommendation: raw.analysis.recommendation,
+      main_claims: (raw.analysis.main_claims || []).slice(0, 6),
+      missing_context: raw.analysis.missing_context || []
+    } : null,
+    crossSource: raw.cross_source_check || null,
+    risk: raw.risk_assessment || null,
+    genderImpact: raw.gender_impact_assessment ? {
+      status_label: raw.gender_impact_assessment.status_label,
+      score: raw.gender_impact_assessment.score,
+      explanation: raw.gender_impact_assessment.explanation,
+      signals: (raw.gender_impact_assessment.signals || []).map(s => ({ label: s.label, severity: s.severity }))
+    } : null,
+    relatedNews: (raw.related_news || []).slice(0, 6).map(r => ({
+      title: r.title,
+      url: r.url,
+      source_name: r.source_name || r.source,
+      relation_label: r.relation_label
+    })),
+    claimContrasts: (raw.claim_contrasts || []).slice(0, 6).map(c => ({
+      claim: truncateText(c.claim, 200),
+      status_label: c.status_label,
+      explanation: truncateText(c.explanation, 200)
+    })),
+    article: raw.article ? {
+      title: raw.article.title,
+      author: raw.article.author,
+      published_at: raw.article.published_at,
+      source_domain: raw.article.source_domain
+    } : null
+  })
+
+  const buildMediaHistoryDetail = (raw) => ({
+    kind: 'media',
+    is_ai_generated: raw.is_ai_generated,
+    is_manipulated: raw.is_manipulated,
+    is_misinformation: raw.is_misinformation,
+    confidence: raw.confidence,
+    analysis_type: raw.analysis_type,
+    audioDetails: raw.audio_details || null,
+    videoDetails: raw.video_details || null,
+    metadata: raw.metadata || null,
+    processingTime: raw.processing_time,
+    contentAnalysis: raw.content_analysis ? {
+      fakeNews: raw.content_analysis.fake_news || null,
+      factChecking: raw.content_analysis.fact_checking ? {
+        fact_checks_found: raw.content_analysis.fact_checking.fact_checks_found,
+        fact_checks: (raw.content_analysis.fact_checking.fact_checks || []).slice(0, 5)
+      } : null,
+      extractedClaims: (raw.content_analysis.extracted_claims || []).slice(0, 6),
+      llmAnalysis: raw.content_analysis.llm_analysis || null,
+      transcriptionExcerpt: truncateText(raw.content_analysis.transcription?.text, 500)
+    } : null
+  })
+
   const pollNewsAnalysis = (analysisId) => {
     if (pollingRef.current) clearInterval(pollingRef.current)
     let attempts = 0
@@ -464,6 +561,9 @@ function App() {
         : (result.confidence < 0.6 ? 'dudoso' : 'verificado')
       const sourceTitle = result.metadata?.source_metadata?.title
       const title = sourceTitle || (activeTab === 'link' ? urlValue : (selectedFile?.name || videoUrl)) || 'Contenido analizado'
+      const detail = activeTab === 'link'
+        ? buildNewsHistoryDetail(result.raw_news || {})
+        : buildMediaHistoryDetail(result || {})
       addHistoryEntry({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         type: activeTab,
@@ -471,7 +571,8 @@ function App() {
         source: activeTab === 'link' ? urlValue : (videoUrl || selectedFile?.name || ''),
         status,
         confidence: typeof result.confidence === 'number' ? result.confidence : null,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        detail
       })
     } catch (err) {
       setError(err.message || 'Error al procesar el análisis')
@@ -812,6 +913,195 @@ function App() {
         </div>
       </div>
     )
+  }
+
+  const detailCardStyle = { backgroundColor: '#0B1430', border: '1px solid #1C2A52' }
+  const detailLabelStyle = { color: '#E8ECF1' }
+  const detailMutedStyle = { color: '#7A8290' }
+
+  const renderNewsHistoryDetail = (d) => (
+    <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
+      {d.reliability && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={detailLabelStyle}>Confiabilidad estimada</span>
+            <span className="text-xs font-mono font-bold" style={{ color: BRAND_ORANGE }}>{d.reliability.score}/100 · {d.reliability.level}</span>
+          </div>
+          <p className="text-xs leading-relaxed" style={detailMutedStyle}>{d.reliability.explanation}</p>
+          {d.reliability.factors?.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {d.reliability.factors.map((f, i) => (
+                <li key={i} className="text-xs" style={detailMutedStyle}>· {f}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {d.sourceVerification && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Fuente</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>
+            Estado: <span style={detailLabelStyle}>{d.sourceVerification.status}</span>
+            {d.sourceVerification.source_name && <> · {d.sourceVerification.source_name}</>}
+          </p>
+          {d.sourceVerification.recommendation && (
+            <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.sourceVerification.recommendation}</p>
+          )}
+        </div>
+      )}
+
+      {d.contentQuality && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={detailLabelStyle}>Calidad del contenido</span>
+            <span className="text-xs font-mono font-bold" style={{ color: BRAND_ORANGE }}>{d.contentQuality.quality_score}/100</span>
+          </div>
+          <p className="text-xs" style={detailMutedStyle}>
+            Autor: {d.contentQuality.has_author ? 'Sí' : 'No'} · Fecha: {d.contentQuality.has_date ? 'Sí' : 'No'} · Fuentes citadas: {d.contentQuality.has_sources ? 'Sí' : 'No'}
+          </p>
+        </div>
+      )}
+
+      {d.analysis && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Análisis del contenido</span>
+          {d.analysis.summary && <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.analysis.summary}</p>}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs" style={detailMutedStyle}>
+            {d.analysis.bias_analysis && <span>Sesgo: <span style={detailLabelStyle}>{d.analysis.bias_analysis.score}/100</span></span>}
+            {d.analysis.clickbait && <span>Clickbait: <span style={detailLabelStyle}>{d.analysis.clickbait.score}/100</span></span>}
+            {d.analysis.credibility && <span>Credibilidad: <span style={detailLabelStyle}>{d.analysis.credibility.score}/100 ({d.analysis.credibility.risk_level})</span></span>}
+          </div>
+          {d.analysis.manipulation_signals?.length > 0 && (
+            <p className="text-xs mt-1.5" style={{ color: '#E8A33D' }}>Señales de manipulación: {d.analysis.manipulation_signals.join(', ')}</p>
+          )}
+          {d.analysis.recommendation && (
+            <p className="text-xs mt-1.5 leading-relaxed" style={detailMutedStyle}><span style={detailLabelStyle}>Recomendación:</span> {d.analysis.recommendation}</p>
+          )}
+        </div>
+      )}
+
+      {d.crossSource && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Cruce con cobertura relacionada</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>
+            Fuentes independientes: {d.crossSource.independent_sources_count} · Cobertura Radar: {d.crossSource.radar_media_coverage_count} · Estado: {d.crossSource.coverage_status}
+          </p>
+        </div>
+      )}
+
+      {d.risk && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Riesgo de desinformación</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>
+            Nivel: <span style={detailLabelStyle}>{d.risk.level}</span> · Riesgo de fraude/desinformación: {d.risk.fraud_or_disinformation_risk}
+          </p>
+        </div>
+      )}
+
+      {d.genderImpact && d.genderImpact.signals?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Impacto de género</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>{d.genderImpact.status_label}</p>
+        </div>
+      )}
+
+      {d.relatedNews?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Noticias relacionadas</span>
+          <ul className="mt-1.5 space-y-1">
+            {d.relatedNews.map((r, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {r.title}{r.source_name ? ` (${r.source_name})` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.claimContrasts?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Afirmaciones contrastadas</span>
+          <ul className="mt-1.5 space-y-1.5">
+            {d.claimContrasts.map((c, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}><span style={detailLabelStyle}>{c.status_label}:</span> {c.claim}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderMediaHistoryDetail = (d) => (
+    <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
+      <div className="rounded-lg p-3" style={detailCardStyle}>
+        <span className="text-xs font-semibold" style={detailLabelStyle}>Resultado del análisis</span>
+        <p className="text-xs mt-1" style={detailMutedStyle}>
+          Generado por IA: {d.is_ai_generated ? 'Sí' : 'No'} · Manipulado: {d.is_manipulated ? 'Sí' : 'No'} · Desinformación: {d.is_misinformation ? 'Sí' : 'No'}
+        </p>
+      </div>
+
+      {(d.audioDetails || d.videoDetails) && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Señales técnicas</span>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs" style={detailMutedStyle}>
+            {d.audioDetails?.spectral_score != null && <span>Espectral: {(d.audioDetails.spectral_score * 100).toFixed(0)}%</span>}
+            {d.audioDetails?.pitch_consistency != null && <span>Consistencia de tono: {(d.audioDetails.pitch_consistency * 100).toFixed(0)}%</span>}
+            {d.audioDetails?.ml_score != null && <span>Score ML: {(d.audioDetails.ml_score * 100).toFixed(0)}%</span>}
+            {d.videoDetails?.facial_consistency != null && <span>Consistencia facial: {(d.videoDetails.facial_consistency * 100).toFixed(0)}%</span>}
+            {d.videoDetails?.frame_artifacts != null && <span>Artefactos de fotograma: {(d.videoDetails.frame_artifacts * 100).toFixed(0)}%</span>}
+          </div>
+        </div>
+      )}
+
+      {d.contentAnalysis?.fakeNews && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Clasificación de contenido</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>
+            {d.contentAnalysis.fakeNews.label || (d.contentAnalysis.fakeNews.is_fake_news ? 'Posible desinformación' : 'Sin indicios de desinformación')} · {(d.contentAnalysis.fakeNews.confidence * 100).toFixed(0)}% confianza
+          </p>
+          {d.contentAnalysis.fakeNews.details && (
+            <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.contentAnalysis.fakeNews.details}</p>
+          )}
+        </div>
+      )}
+
+      {d.contentAnalysis?.transcriptionExcerpt && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Transcripción</span>
+          <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.contentAnalysis.transcriptionExcerpt}</p>
+        </div>
+      )}
+
+      {d.contentAnalysis?.factChecking?.fact_checks?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Verificaciones encontradas</span>
+          <ul className="mt-1.5 space-y-1">
+            {d.contentAnalysis.factChecking.fact_checks.map((f, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {f.title || f.claim_text || 'Verificación'}{f.publisher ? ` (${f.publisher})` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.metadata && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Info técnica</span>
+          <p className="text-xs mt-1" style={detailMutedStyle}>
+            Formato: {d.metadata.format || 'N/A'} · Duración: {d.metadata.duration ? `${d.metadata.duration.toFixed(1)}s` : 'N/A'} · Procesado en {d.processingTime ? `${d.processingTime.toFixed(2)}s` : 'N/A'}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderHistoryDetail = (item) => {
+    if (!item.detail) {
+      return (
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1C2A52' }}>
+          <p className="text-xs" style={detailMutedStyle}>No hay detalle disponible para este análisis (se guardó antes de esta actualización).</p>
+        </div>
+      )
+    }
+    return item.detail.kind === 'media' ? renderMediaHistoryDetail(item.detail) : renderNewsHistoryDetail(item.detail)
   }
 
   return (
@@ -1951,32 +2241,48 @@ function App() {
                     <div className="space-y-2 mb-2">
                       {history.map((item) => {
                         const Icon = getStatusIcon(item.status)
+                        const isExpanded = expandedHistoryIds.has(item.id)
                         return (
                           <div
                             key={item.id}
                             className="rounded-lg p-3"
                             style={{ backgroundColor: '#101B3D', border: '1px solid #16234E' }}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-sm flex-1 min-w-0 truncate" style={{ color: '#E8ECF1' }}>{item.title}</p>
-                              <span className="text-xs font-mono flex-shrink-0" style={{ color: '#7A8290' }}>
-                                {new Date(item.timestamp).toLocaleString('es-EC', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <Icon className="w-3 h-3" style={{ color: getStatusColor(item.status) }} />
-                              <span className="text-xs font-mono capitalize" style={{ color: getStatusColor(item.status) }}>
-                                {item.status}
-                              </span>
-                              <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
-                                · {item.type === 'link' ? 'Noticia' : 'Video/Audio'}
-                              </span>
-                              {item.confidence !== null && (
-                                <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
-                                  · {(item.confidence * 100).toFixed(0)}% confianza
+                            <button
+                              type="button"
+                              onClick={() => toggleHistoryExpanded(item.id)}
+                              className="w-full text-left"
+                              aria-expanded={isExpanded}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-sm flex-1 min-w-0 truncate" style={{ color: '#E8ECF1' }}>{item.title}</p>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
+                                    {new Date(item.timestamp).toLocaleString('es-EC', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-3.5 h-3.5" style={{ color: '#7A8290' }} />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5" style={{ color: '#7A8290' }} />
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <Icon className="w-3 h-3" style={{ color: getStatusColor(item.status) }} />
+                                <span className="text-xs font-mono capitalize" style={{ color: getStatusColor(item.status) }}>
+                                  {item.status}
                                 </span>
-                              )}
-                            </div>
+                                <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
+                                  · {item.type === 'link' ? 'Noticia' : 'Video/Audio'}
+                                </span>
+                                {item.confidence !== null && (
+                                  <span className="text-xs font-mono" style={{ color: '#7A8290' }}>
+                                    · {(item.confidence * 100).toFixed(0)}% confianza
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                            {isExpanded && renderHistoryDetail(item)}
                           </div>
                         )
                       })}
