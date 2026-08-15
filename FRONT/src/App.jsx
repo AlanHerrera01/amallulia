@@ -484,7 +484,6 @@ function App() {
       missing_context: raw.analysis.missing_context || []
     } : null,
     crossSource: raw.cross_source_check || null,
-    risk: raw.risk_assessment || null,
     genderImpact: raw.gender_impact_assessment ? {
       status_label: raw.gender_impact_assessment.status_label,
       score: raw.gender_impact_assessment.score,
@@ -680,7 +679,6 @@ function App() {
     platform: currentNewsPayload.editorial_metadata?.platform || 'sitio web',
     publisher: currentNewsPayload.content_attribution?.publisher_name || currentNewsPayload.source_verification?.source_name || currentNewsPayload.article?.source_domain || 'Sin fuente',
     publicationDate: currentNewsPayload.editorial_metadata?.publication_date || currentNewsPayload.article?.published_at || 'Sin fecha detectada',
-    auditLabel: currentNewsPayload.risk_assessment?.level || currentNewsPayload.audit?.priority || 'sin dato',
     relatedSources: (currentNewsPayload.related_news || []).slice(0, 4).map(item => ({
       name: item.source_name || item.source || 'Fuente relacionada',
       url: item.url
@@ -750,7 +748,6 @@ function App() {
     if (!result) return null
 
     const score = result.news_reliability_assessment?.score ?? result.analysis?.credibility?.score ?? 0
-    const risk = result.risk_assessment?.level || 'sin dato'
     const article = result.article || {}
     const editorial = result.editorial_metadata || {}
     const source = result.source_verification || {}
@@ -766,7 +763,6 @@ function App() {
       { name: 'Confiabilidad', value: safeScore, color: safeScore >= 80 ? '#00C896' : safeScore >= 60 ? '#E8A33D' : '#E85D5D' },
       { name: 'Pendiente', value: Math.max(0, 100 - safeScore), color: '#E9ECEF' },
     ]
-    const riskColor = risk === 'bajo' ? '#00C896' : risk === 'medio' ? '#E8A33D' : '#E85D5D'
     const sourceLabel = source.source_name || editorial.publisher_name || article.source_domain || 'Sin fuente'
     const publisherType = editorial.publisher_type || source.source_type || 'sin clasificar'
     const contentType = result.content_classification?.type || urlCheck.content_type || 'sin dato'
@@ -818,9 +814,6 @@ function App() {
                 </span>
                 <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: isElectoral ? '#00C89618' : '#E9ECEF', color: isElectoral ? '#008F6A' : '#6B7280' }}>
                   {isElectoral ? 'Electoral' : 'No electoral'}
-                </span>
-                <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: riskColor + '18', color: riskColor }}>
-                  Riesgo {risk}
                 </span>
                 {isUpdatingRelated && (
                   <span className="text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: '#3B82F618', color: '#2563EB' }}>
@@ -1017,8 +1010,6 @@ function App() {
       { name: 'Confiabilidad', value: score, color: donutColor },
       { name: 'Pendiente', value: Math.max(0, 100 - score), color: '#1C2A52' }
     ]
-    const riskLevel = d.risk?.level
-    const riskColor = riskLevel === 'bajo' ? '#00C896' : riskLevel === 'medio' ? '#E8A33D' : (riskLevel === 'alto' || riskLevel === 'critico') ? '#E85D5D' : '#7A8290'
     const contentKindLabel = CONTENT_KIND_LABELS[d.contentClassification?.content_kind] || 'Contenido por revisar'
     const domain = d.informationRelevance?.domain
     const domainLabel = domain === 'electoral' ? 'Electoral' : domain === 'no_electoral' ? 'No electoral' : 'Relevancia indeterminada'
@@ -1035,11 +1026,6 @@ function App() {
         <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: domainColor + '22', color: domainColor }}>
           {domainLabel}
         </span>
-        {riskLevel && (
-          <span className="text-xs px-2.5 py-1 rounded-full font-semibold capitalize" style={{ backgroundColor: riskColor + '22', color: riskColor }}>
-            Riesgo {riskLevel}
-          </span>
-        )}
       </div>
 
       {d.reliability && (
@@ -1141,15 +1127,6 @@ function App() {
           <span className="text-xs font-semibold" style={detailLabelStyle}>Cruce con cobertura relacionada</span>
           <p className="text-xs mt-1" style={detailMutedStyle}>
             Fuentes independientes: {d.crossSource.independent_sources_count} · Cobertura Radar: {d.crossSource.radar_media_coverage_count} · Estado: {d.crossSource.coverage_status}
-          </p>
-        </div>
-      )}
-
-      {d.risk && (
-        <div className="rounded-lg p-3" style={detailCardStyle}>
-          <span className="text-xs font-semibold" style={detailLabelStyle}>Riesgo de desinformación</span>
-          <p className="text-xs mt-1" style={detailMutedStyle}>
-            Nivel: <span style={detailLabelStyle}>{d.risk.level}</span> · Riesgo de fraude/desinformación: {d.risk.fraud_or_disinformation_risk}
           </p>
         </div>
       )}
@@ -2721,13 +2698,8 @@ function App() {
           <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5" style={{ backgroundColor: '#F7F9FC' }}>
             {currentNewsContext ? (
               <div className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-gray-400">Noticia en análisis</span>
-                  <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase" style={{ backgroundColor: '#F5822B18', color: BRAND_ORANGE }}>
-                    {currentNewsContext.auditLabel}
-                  </span>
-                </div>
-                <p className="text-sm font-bold leading-snug" style={{ color: BRAND_NAVY }}>{currentNewsContext.title}</p>
+                <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-gray-400">Noticia en análisis</span>
+                <p className="text-sm font-bold leading-snug mt-2" style={{ color: BRAND_NAVY }}>{currentNewsContext.title}</p>
                 <p className="text-[11px] leading-relaxed mt-2 text-gray-600">
                   {currentNewsContext.summary.slice(0, 180)}{currentNewsContext.summary.length > 180 ? '...' : ''}
                 </p>
