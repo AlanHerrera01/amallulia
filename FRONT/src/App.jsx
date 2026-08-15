@@ -1541,7 +1541,7 @@ function App() {
                   <div className="mb-2">
                     <div className="flex items-center gap-2 mb-2">
                       <ClipboardList className="w-5 h-5" style={{ color: BRAND_ORANGE }} />
-                      <h3 className="text-base font-semibold text-white">Historial de análisis</h3>
+                      <h3 className="text-base font-semibold text-gray-900">Historial de análisis</h3>
                     </div>
                     <p className="text-xs leading-relaxed" style={{ color: '#7A8290' }}>
                       Registro de los links, noticias, videos y audios que ya analizaste en este navegador
@@ -1595,7 +1595,7 @@ function App() {
                   <div className="mb-4 pt-2" style={{ borderTop: '1px solid #16234E' }}>
                     <div className="flex items-center gap-2 mb-2 pt-2">
                       <ClipboardList className="w-5 h-5" style={{ color: BRAND_ORANGE }} />
-                      <h3 className="text-base font-semibold text-white">Criterios de evaluación</h3>
+                      <h3 className="text-base font-semibold text-gray-900">Criterios de evaluación</h3>
                     </div>
                     <p className="text-xs leading-relaxed" style={{ color: '#7A8290' }}>
                       Estos son los 5 criterios que utilizamos para verificar la autenticidad del contenido electoral
