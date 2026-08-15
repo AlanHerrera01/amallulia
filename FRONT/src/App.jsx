@@ -366,6 +366,128 @@ const classifyNewsContent = (raw) => {
   return { label: 'Sin clasificar', reasons }
 }
 
+// ===== Rubrica para identificar narrativas de desinformacion (solo Front) =====
+// El Back NO calcula esta rubrica de 5 criterios x 3 niveles como tal - solo aporta
+// una unica evidencia de "Revision de narrativa" (sesgo/clickbait/señales). Esta
+// funcion mapea los 5 criterios de la rubrica a las señales reales que el Back si
+// calcula (credibilidad, sesgo, cobertura relacionada, calidad del contenido,
+// registro de la fuente, impacto de genero, etc.), citando siempre que senal
+// concreta motivo cada nivel. No inventa datos que el Back no provee.
+const NARRATIVE_RUBRIC_LEVELS = {
+  1: { label: 'Nivel 1: Periodismo ético (bajo riesgo)', color: '#00C896' },
+  2: { label: 'Nivel 2: Contenido sospechoso (riesgo medio)', color: '#E8A33D' },
+  3: { label: 'Nivel 3: Narrativa de desinformación (alto riesgo)', color: '#E85D5D' }
+}
+
+const evaluateNarrativeRubric = (raw) => {
+  const credibility = raw?.analysis?.credibility
+  const reliability = raw?.news_reliability_assessment
+  const contentQuality = raw?.content_quality
+  const missingContext = raw?.analysis?.missing_context || []
+  const informationGaps = raw?.analysis?.information_gaps || []
+  const crossSource = raw?.cross_source_check
+  const bias = raw?.analysis?.bias_analysis
+  const clickbait = raw?.analysis?.clickbait
+  const manipulationSignals = raw?.analysis?.manipulation_signals || []
+  const genderAssessment = raw?.gender_impact_assessment
+  const sourceVerification = raw?.source_verification
+  const sourceClassification = raw?.source_classification
+  const editorial = raw?.editorial_metadata
+  const urlHealth = raw?.url_health
+
+  const criteria = []
+
+  // 1. Veracidad y Precision
+  {
+    const reasons = []
+    let level = 1
+    if (credibility) reasons.push(`Riesgo de credibilidad textual: ${credibility.risk_level} (${credibility.score}/100)`)
+    if (reliability) reasons.push(`Confiabilidad de la noticia: ${reliability.level} (${reliability.score}/100)`)
+    if (contentQuality?.warnings?.length > 0) reasons.push(`Advertencias de calidad del contenido: ${contentQuality.warnings.join(', ')}`)
+    if (credibility?.risk_level === 'alto' || credibility?.risk_level === 'critico' || reliability?.level === 'indeterminada') {
+      level = 3
+    } else if (credibility?.risk_level === 'medio' || reliability?.level === 'baja' || contentQuality?.warnings?.length > 0) {
+      level = 2
+    }
+    criteria.push({ criterio: 'Veracidad y Precisión', level, reasons })
+  }
+
+  // 2. Contexto y Equilibrio
+  {
+    const reasons = []
+    let level = 1
+    if (crossSource) reasons.push(`Cobertura relacionada: ${crossSource.coverage_status} (${crossSource.independent_sources_count} fuente(s) independiente(s))`)
+    if (missingContext.length > 0) reasons.push(`Contexto faltante detectado: ${missingContext.slice(0, 2).join('; ')}`)
+    if (informationGaps.length > 0) reasons.push(`${informationGaps.length} vacío(s) de información identificado(s) en el análisis`)
+    if (bias) reasons.push(`Sesgo editorial detectado: ${bias.direction} (${bias.score}/100)`)
+    if (crossSource?.coverage_status === 'no_related_coverage' && bias && bias.score >= 70) {
+      level = 3
+    } else if (crossSource?.coverage_status === 'single_source' || missingContext.length > 0 || (bias && bias.score >= 40)) {
+      level = 2
+    }
+    criteria.push({ criterio: 'Contexto y Equilibrio', level, reasons })
+  }
+
+  // 3. Independencia e Intereses
+  {
+    const reasons = []
+    let level = 1
+    const publisherType = editorial?.publisher_type
+    if (publisherType) reasons.push(`Tipo de emisor: ${publisherType.replaceAll('_', ' ')}`)
+    if (sourceClassification) reasons.push(`Clasificación de la fuente: ${sourceClassification.communication_type}`)
+    if (bias) reasons.push(`Sesgo detectado: ${bias.direction} (${bias.score}/100)`)
+    const institutionalOrPartisan = ['institucion_publica', 'institucion_privada'].includes(publisherType) || ['gobierno', 'empresa'].includes(sourceClassification?.communication_type)
+    if (institutionalOrPartisan && bias && bias.score >= 70) {
+      level = 3
+    } else if (institutionalOrPartisan || (bias && bias.score >= 40) || sourceVerification?.status === 'unregistered_source') {
+      level = 2
+    }
+    criteria.push({ criterio: 'Independencia e Intereses', level, reasons })
+  }
+
+  // 4. Intencionalidad y Humanidad
+  {
+    const reasons = []
+    let level = 1
+    if (clickbait) reasons.push(`Score de clickbait: ${clickbait.score}/100`)
+    if (manipulationSignals.length > 0) reasons.push(`Señales de manipulación: ${manipulationSignals.slice(0, 2).join('; ')}`)
+    if (genderAssessment) reasons.push(`Impacto de género: ${genderAssessment.status_label}`)
+    const hateSignals = (genderAssessment?.signals || []).filter(s => HATE_SIGNAL_TYPES.includes(s.signal_type))
+    if ((clickbait && clickbait.score >= 70) || genderAssessment?.status === 'alerta_impacto_genero' || hateSignals.length > 0) {
+      level = 3
+    } else if ((clickbait && clickbait.score >= 40) || manipulationSignals.length > 0 || genderAssessment?.status === 'senales_para_revision') {
+      level = 2
+    }
+    criteria.push({ criterio: 'Intencionalidad y Humanidad', level, reasons })
+  }
+
+  // 5. Transparencia y Responsabilidad
+  {
+    const reasons = []
+    let level = 1
+    reasons.push(`Autoría identificada en el artículo: ${contentQuality?.has_author ? 'Sí' : 'No'}`)
+    reasons.push(`Fuentes citadas en el artículo: ${contentQuality?.has_sources ? 'Sí' : 'No'}`)
+    if (sourceVerification) reasons.push(`Registro de la fuente: ${sourceVerification.status}`)
+    if (urlHealth) reasons.push(`Estado del enlace: ${urlHealth.status}`)
+    const noAuthorNoSources = !contentQuality?.has_author && !contentQuality?.has_sources
+    const unknownSource = sourceVerification?.status === 'unknown'
+    if (noAuthorNoSources && unknownSource) {
+      level = 3
+    } else if (!contentQuality?.has_author || !contentQuality?.has_sources || sourceVerification?.status === 'unregistered_source' || sourceVerification?.status === 'social_account') {
+      level = 2
+    }
+    criteria.push({ criterio: 'Transparencia y Responsabilidad', level, reasons })
+  }
+
+  const level3Count = criteria.filter(c => c.level === 3).length
+  const level2Count = criteria.filter(c => c.level === 2).length
+  let overallLevel = 1
+  if (level3Count >= 2) overallLevel = 3
+  else if (level3Count >= 1 || level2Count >= 3) overallLevel = 2
+
+  return { criteria, overallLevel }
+}
+
 const classifyMediaContent = (raw) => {
   const reasons = []
   const llm = raw?.content_analysis?.llm_analysis
@@ -652,6 +774,7 @@ function App() {
   const buildNewsHistoryDetail = (raw) => ({
     kind: 'news',
     contentType: classifyNewsContent(raw),
+    narrativeRubric: evaluateNarrativeRubric(raw),
     emotion: analyzeEmotionSignals([raw.article?.title, raw.analysis?.summary, raw.article?.text].filter(Boolean).join(' ')),
     sentiment: raw.analysis?.sentiment || null,
     reliability: raw.news_reliability_assessment || null,
@@ -1400,6 +1523,48 @@ function App() {
           ) : (
             <p className="text-xs mt-1" style={detailMutedStyle}>No se detectaron palabras con carga emocional marcada en el texto.</p>
           )}
+        </div>
+      )}
+
+      {d.narrativeRubric && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={detailLabelStyle}>Rúbrica de narrativa de desinformación</span>
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold"
+              style={{
+                backgroundColor: NARRATIVE_RUBRIC_LEVELS[d.narrativeRubric.overallLevel].color + '22',
+                color: NARRATIVE_RUBRIC_LEVELS[d.narrativeRubric.overallLevel].color
+              }}
+            >
+              {NARRATIVE_RUBRIC_LEVELS[d.narrativeRubric.overallLevel].label}
+            </span>
+          </div>
+          <p className="text-[10px] mb-2 leading-relaxed" style={detailMutedStyle}>
+            Evaluación por Front a partir de las señales que ya calcula el Back (credibilidad, sesgo, cobertura relacionada, calidad del contenido, registro de la fuente e impacto de género) — el Back no expone esta rúbrica de 5 criterios directamente.
+          </p>
+          <div className="space-y-2">
+            {d.narrativeRubric.criteria.map((c, i) => {
+              const levelInfo = NARRATIVE_RUBRIC_LEVELS[c.level]
+              return (
+                <div key={i} className="rounded-md p-2" style={{ backgroundColor: '#101B3D' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold" style={detailLabelStyle}>{c.criterio}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold flex-shrink-0" style={{ backgroundColor: levelInfo.color + '22', color: levelInfo.color }}>
+                      Nivel {c.level}
+                    </span>
+                  </div>
+                  {c.reasons?.length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                      {c.reasons.map((r, j) => (
+                        <li key={j} className="text-xs" style={detailMutedStyle}>· {r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
