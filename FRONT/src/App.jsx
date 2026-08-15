@@ -263,6 +263,154 @@ const TERMS_SECTIONS = [
 
 const TERMS_CLOSING = []
 
+// ===== Clasificacion de tipo de contenido (solo Front) =====
+// Mapea las senales que ya calcula el Back (sesgo, clickbait, credibilidad,
+// senales de manipulacion, impacto de genero, confiabilidad, fuente, etc.)
+// a una categoria de desinformacion reconocible, siempre con el detalle de
+// que senales concretas la motivaron. No inventa categorias que el Back no
+// pueda sustentar con datos reales (ej. no hay deteccion de satira o teorias
+// de conspiracion en el Back, asi que esas categorias no se usan aqui).
+const CONTENT_TYPE_COLORS = {
+  'Discurso del odio': '#E85D5D',
+  'Contenido manipulado': '#E85D5D',
+  'Desinformación': '#E85D5D',
+  'Noticia falsa': '#E85D5D',
+  'Bulo': '#E85D5D',
+  'Deepfake': '#E85D5D',
+  'Contenido inventado': '#E85D5D',
+  'Sesgo extremo': '#E8A33D',
+  'Clickbait': '#E8A33D',
+  'Contenido engañoso': '#E8A33D',
+  'Noticias políticas': '#7A8290',
+  'Contenido verificado': '#00C896',
+  'Contenido auténtico': '#00C896',
+  'Sin clasificar': '#7A8290'
+}
+const getContentTypeColor = (label) => CONTENT_TYPE_COLORS[label] || '#7A8290'
+
+const HATE_SIGNAL_TYPES = ['lenguaje_degradante', 'amenazas_intimidacion', 'hostigamiento_reiterado', 'descalificacion_genero']
+
+const classifyNewsContent = (raw) => {
+  const reasons = []
+  const bias = raw?.analysis?.bias_analysis
+  const clickbait = raw?.analysis?.clickbait
+  const credibility = raw?.analysis?.credibility
+  const manipulationSignals = raw?.analysis?.manipulation_signals || []
+  const genderSignals = raw?.gender_impact_assessment?.signals || []
+  const reliability = raw?.news_reliability_assessment
+  const sourceStatus = raw?.source_verification?.status
+  const contentKind = raw?.url_content_classification?.content_kind
+  const domain = raw?.information_relevance?.domain
+
+  const hateSignals = genderSignals.filter(s => HATE_SIGNAL_TYPES.includes(s.signal_type) && (s.severity === 'alta' || s.severity === 'media'))
+  if (hateSignals.length > 0) {
+    hateSignals.forEach(s => reasons.push(`Señal de género detectada: ${s.label} (severidad ${s.severity})`))
+    return { label: 'Discurso del odio', reasons }
+  }
+
+  const manipulatedGenderSignal = genderSignals.find(s => s.signal_type === 'contenido_manipulado')
+  if (manipulatedGenderSignal) {
+    reasons.push(`Señal detectada: ${manipulatedGenderSignal.label}`)
+    return { label: 'Contenido manipulado', reasons }
+  }
+
+  if (clickbait && clickbait.score >= 60) {
+    reasons.push(`Score de clickbait: ${clickbait.score}/100`)
+    if (clickbait.evidence?.length) reasons.push(...clickbait.evidence.slice(0, 3))
+    return { label: 'Clickbait', reasons }
+  }
+
+  if (bias && bias.score >= 70) {
+    reasons.push(`Sesgo editorial detectado: ${bias.direction} (${bias.score}/100)`)
+    return { label: 'Sesgo extremo', reasons }
+  }
+
+  const lowReliability = reliability && (reliability.level === 'baja' || reliability.level === 'indeterminada')
+  const highCredRisk = credibility && (credibility.risk_level === 'alto' || credibility.risk_level === 'critico')
+  const unregisteredSource = sourceStatus === 'unregistered_source' || sourceStatus === 'social_account' || sourceStatus === 'unknown'
+
+  if (highCredRisk && lowReliability && unregisteredSource) {
+    reasons.push(`Confiabilidad ${reliability.level} (${reliability.score}/100)`)
+    reasons.push(`Riesgo de credibilidad textual: ${credibility.risk_level}`)
+    reasons.push(`Fuente sin registro verificado (${sourceStatus})`)
+    if (manipulationSignals.length) reasons.push(...manipulationSignals.slice(0, 2))
+    return { label: contentKind === 'publicacion_red_social' ? 'Bulo' : 'Noticia falsa', reasons }
+  }
+
+  if (highCredRisk || (lowReliability && manipulationSignals.length > 0)) {
+    reasons.push(`Riesgo de credibilidad textual: ${credibility?.risk_level || 'no determinado'}`)
+    if (reliability) reasons.push(`Confiabilidad ${reliability.level} (${reliability.score}/100)`)
+    if (manipulationSignals.length) reasons.push(...manipulationSignals.slice(0, 3))
+    return { label: 'Desinformación', reasons }
+  }
+
+  if (lowReliability || (credibility && credibility.risk_level === 'medio')) {
+    reasons.push(`Confiabilidad ${reliability?.level || 'no determinada'} (${reliability?.score ?? 'N/A'}/100)`)
+    reasons.push(`Riesgo de credibilidad textual: ${credibility?.risk_level || 'medio'}`)
+    return { label: 'Contenido engañoso', reasons }
+  }
+
+  if (domain === 'electoral') {
+    reasons.push('Clasificado como contenido de relevancia electoral/política')
+    if (raw?.information_relevance?.how_it_relates) reasons.push(raw.information_relevance.how_it_relates)
+    return { label: 'Noticias políticas', reasons }
+  }
+
+  if (reliability && reliability.level === 'alta') {
+    reasons.push(`Confiabilidad alta (${reliability.score}/100)`)
+    reasons.push('No se detectaron señales de sesgo, clickbait o manipulación relevantes')
+    return { label: 'Contenido verificado', reasons }
+  }
+
+  reasons.push('No se detectaron señales suficientes en el análisis para asignar una categoría específica')
+  return { label: 'Sin clasificar', reasons }
+}
+
+const classifyMediaContent = (raw) => {
+  const reasons = []
+  const llm = raw?.content_analysis?.llm_analysis
+  const fakeNews = raw?.content_analysis?.fake_news
+
+  if (raw?.is_ai_generated) {
+    reasons.push('El sistema detectó que el contenido fue generado o sintetizado por IA')
+    if (llm?.indicios_ia) reasons.push(`Indicios de IA: ${llm.indicios_ia}`)
+    return { label: 'Deepfake', reasons }
+  }
+
+  if (raw?.is_manipulated) {
+    reasons.push('Se detectaron señales de manipulación técnica en el archivo')
+    if (llm?.observaciones) reasons.push(llm.observaciones)
+    return { label: 'Contenido manipulado', reasons }
+  }
+
+  if (fakeNews?.is_fake_news && fakeNews.confidence >= 0.6) {
+    reasons.push(`Clasificador de desinformación: ${(fakeNews.confidence * 100).toFixed(0)}% de confianza`)
+    if (fakeNews.details) reasons.push(fakeNews.details)
+    return { label: raw?.is_misinformation ? 'Noticia falsa' : 'Contenido inventado', reasons }
+  }
+
+  if (llm?.veredicto === 'ENGAÑOSO' || llm?.veredicto === 'FALSO') {
+    reasons.push(`Veredicto de IA: ${llm.veredicto}${llm.confianza != null ? ` (${llm.confianza}% confianza)` : ''}`)
+    if (llm.observaciones) reasons.push(llm.observaciones)
+    return { label: 'Contenido engañoso', reasons }
+  }
+
+  if (llm?.veredicto === 'MIXTO') {
+    reasons.push(`Veredicto de IA: MIXTO${llm.confianza != null ? ` (${llm.confianza}% confianza)` : ''}`)
+    if (llm.coincide_con_fuentes === false) reasons.push('No coincide completamente con las fuentes consultadas')
+    return { label: 'Contenido engañoso', reasons }
+  }
+
+  if (llm?.veredicto === 'AUTÉNTICO' || (typeof raw?.confidence === 'number' && raw.confidence >= 0.7)) {
+    reasons.push(llm?.veredicto ? `Veredicto de IA: ${llm.veredicto}${llm.confianza != null ? ` (${llm.confianza}% confianza)` : ''}` : `Fiabilidad del análisis: ${(raw.confidence * 100).toFixed(0)}%`)
+    reasons.push('No se detectaron señales de manipulación ni de generación por IA')
+    return { label: 'Contenido auténtico', reasons }
+  }
+
+  reasons.push('No se detectaron señales suficientes en el análisis para asignar una categoría específica')
+  return { label: 'Sin clasificar', reasons }
+}
+
 function App() {
   const [termsAccepted, setTermsAccepted] = useState(() => {
     try {
@@ -448,6 +596,7 @@ function App() {
   // detalle del analisis en Auditoria, evitando guardar textos muy largos (articulo completo, etc.)
   const buildNewsHistoryDetail = (raw) => ({
     kind: 'news',
+    contentType: classifyNewsContent(raw),
     reliability: raw.news_reliability_assessment || null,
     sourceVerification: raw.source_verification || null,
     sourceClassification: raw.source_classification ? {
@@ -532,6 +681,7 @@ function App() {
 
   const buildMediaHistoryDetail = (raw) => ({
     kind: 'media',
+    contentType: classifyMediaContent(raw),
     is_ai_generated: raw.is_ai_generated,
     is_manipulated: raw.is_manipulated,
     is_misinformation: raw.is_misinformation,
@@ -748,6 +898,8 @@ function App() {
     if (!result) return null
 
     const score = result.news_reliability_assessment?.score ?? result.analysis?.credibility?.score ?? 0
+    const disinfoClassification = classifyNewsContent(result)
+    const disinfoClassificationColor = getContentTypeColor(disinfoClassification.label)
     const article = result.article || {}
     const editorial = result.editorial_metadata || {}
     const source = result.source_verification || {}
@@ -809,6 +961,12 @@ function App() {
           <section className="p-5 md:p-6 space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                  style={{ backgroundColor: disinfoClassificationColor + '18', color: disinfoClassificationColor }}
+                >
+                  {disinfoClassification.label}
+                </span>
                 <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: '#F5822B18', color: BRAND_ORANGE }}>
                   {humanContentType}
                 </span>
@@ -827,6 +985,25 @@ function App() {
               </h3>
               <p className="text-sm leading-relaxed text-gray-700">{summary}</p>
             </div>
+
+            {disinfoClassification.reasons?.length > 0 && (
+              <div className="rounded-lg p-4 border" style={{ backgroundColor: disinfoClassificationColor + '0D', borderColor: disinfoClassificationColor + '40' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="w-4 h-4" style={{ color: disinfoClassificationColor }} />
+                  <h4 className="text-sm font-bold" style={{ color: disinfoClassificationColor }}>
+                    ¿Por qué se clasificó como "{disinfoClassification.label}"?
+                  </h4>
+                </div>
+                <ul className="space-y-1">
+                  {disinfoClassification.reasons.map((r, i) => (
+                    <li key={i} className="text-sm text-gray-700 flex gap-2">
+                      <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: disinfoClassificationColor }} />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="grid md:grid-cols-3 gap-3 rounded-lg p-3" style={{ backgroundColor: '#F8F9FA' }}>
               <div>
@@ -1020,6 +1197,14 @@ function App() {
     return (
     <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
       <div className="flex items-center gap-2 flex-wrap">
+        {d.contentType && (
+          <span
+            className="text-xs px-2.5 py-1 rounded-full font-semibold"
+            style={{ backgroundColor: getContentTypeColor(d.contentType.label) + '22', color: getContentTypeColor(d.contentType.label) }}
+          >
+            {d.contentType.label}
+          </span>
+        )}
         <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: BRAND_ORANGE + '22', color: BRAND_ORANGE }}>
           {contentKindLabel}
         </span>
@@ -1027,6 +1212,19 @@ function App() {
           {domainLabel}
         </span>
       </div>
+
+      {d.contentType?.reasons?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={{ color: getContentTypeColor(d.contentType.label) }}>
+            ¿Por qué se clasificó como "{d.contentType.label}"?
+          </span>
+          <ul className="mt-1.5 space-y-0.5">
+            {d.contentType.reasons.map((r, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {d.reliability && (
         <div className="rounded-lg p-4" style={detailCardStyle}>
@@ -1241,6 +1439,30 @@ function App() {
 
   const renderMediaHistoryDetail = (d) => (
     <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
+      {d.contentType && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="text-xs px-2.5 py-1 rounded-full font-semibold"
+            style={{ backgroundColor: getContentTypeColor(d.contentType.label) + '22', color: getContentTypeColor(d.contentType.label) }}
+          >
+            {d.contentType.label}
+          </span>
+        </div>
+      )}
+
+      {d.contentType?.reasons?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={{ color: getContentTypeColor(d.contentType.label) }}>
+            ¿Por qué se clasificó como "{d.contentType.label}"?
+          </span>
+          <ul className="mt-1.5 space-y-0.5">
+            {d.contentType.reasons.map((r, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>· {r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="rounded-lg p-3" style={detailCardStyle}>
         <span className="text-xs font-semibold" style={detailLabelStyle}>Resultado del análisis</span>
         <p className="text-xs mt-1" style={detailMutedStyle}>
@@ -2192,6 +2414,8 @@ function App() {
                       'Generic': { color: '#7A8290', bg: '#7A8290', icon: '▶', label: sm?.platform || 'Video' },
                     }
                     const pc = platformConfig[sm?.platform] || platformConfig['Generic']
+                    const disinfoClassification = classifyMediaContent(analysisResult)
+                    const disinfoClassificationColor = getContentTypeColor(disinfoClassification.label)
 
                     // Extract YouTube video ID for embed
                     const ytMatch = sm?.source_url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n]+)/)
@@ -2298,6 +2522,34 @@ function App() {
                           }} />
                         </div>
                       </div>
+
+                      {/* ===== CLASIFICACION DE CONTENIDO ===== */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                          style={{ backgroundColor: disinfoClassificationColor + '18', color: disinfoClassificationColor }}
+                        >
+                          {disinfoClassification.label}
+                        </span>
+                      </div>
+                      {disinfoClassification.reasons?.length > 0 && (
+                        <div className="rounded-lg p-4 border" style={{ backgroundColor: disinfoClassificationColor + '0D', borderColor: disinfoClassificationColor + '40' }}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Info className="w-4 h-4" style={{ color: disinfoClassificationColor }} />
+                            <h4 className="text-sm font-bold" style={{ color: disinfoClassificationColor }}>
+                              ¿Por qué se clasificó como "{disinfoClassification.label}"?
+                            </h4>
+                          </div>
+                          <ul className="space-y-1">
+                            {disinfoClassification.reasons.map((r, i) => (
+                              <li key={i} className="text-sm text-gray-700 flex gap-2">
+                                <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: disinfoClassificationColor }} />
+                                {r}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
                       {/* ===== RESUMEN DEL DISCURSO ===== */}
                       {totalSegs > 0 && (
