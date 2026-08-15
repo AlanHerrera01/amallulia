@@ -1131,11 +1131,11 @@ function App() {
             </div>
 
             {/* Body */}
-            <div className="px-6 py-4 overflow-hidden flex-1 min-h-0 flex flex-col">
-              <div className="relative flex-1 min-h-0">
+            <div className="px-6 py-4">
+              <div className="relative">
                 <div
-                  className={termsExpanded ? 'overflow-y-auto pr-1 h-full' : 'overflow-hidden'}
-                  style={!termsExpanded ? { maxHeight: '190px' } : undefined}
+                  className="overflow-y-auto pr-1"
+                  style={{ maxHeight: termsExpanded ? '50vh' : '190px' }}
                 >
                   {TERMS_META.map((line, i) => (
                     <p key={i} className="text-xs text-gray-500">{line}</p>
@@ -1179,7 +1179,7 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setTermsExpanded(true)}
-                  className="mt-2 text-sm font-semibold text-left flex-shrink-0"
+                  className="mt-2 text-sm font-semibold text-left"
                   style={{ color: BRAND_ORANGE }}
                 >
                   Leer más ↓
