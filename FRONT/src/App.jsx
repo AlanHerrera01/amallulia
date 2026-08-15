@@ -1420,9 +1420,8 @@ function App() {
 
             <div className="space-y-3">
               <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
-                <p className="text-xs text-gray-500">Medio de comunicación</p>
-                <p className="text-sm font-semibold text-gray-900">{sourceLabel}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{humanSourceStatus}</p>
+                <p className="text-xs text-gray-500">Plataforma</p>
+                <p className="text-sm font-semibold text-gray-900">{editorial.platform === 'red_social' ? 'Red social' : 'Medio de comunicación oficial'}</p>
               </div>
               <div className="rounded-lg bg-white border p-3" style={{ borderColor: '#E9ECEF' }}>
                 <p className="text-xs text-gray-500">Impacto de genero</p>
