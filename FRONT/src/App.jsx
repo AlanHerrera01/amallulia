@@ -1091,7 +1091,7 @@ function App() {
     summary: currentNewsPayload.analysis?.summary || currentNewsPayload.article?.description || 'Sin resumen disponible.',
     platform: currentNewsPayload.editorial_metadata?.platform || 'sitio web',
     publisher: currentNewsPayload.content_attribution?.publisher_name || currentNewsPayload.source_verification?.source_name || currentNewsPayload.article?.source_domain || 'Sin fuente',
-    publicationDate: currentNewsPayload.editorial_metadata?.publication_date || currentNewsPayload.article?.published_at || 'Sin fecha detectada',
+    publicationDate: currentNewsPayload.editorial_metadata?.publication_date || currentNewsPayload.article?.published_at || null,
     relatedSources: (currentNewsPayload.related_news || []).slice(0, 4).map(item => ({
       name: item.source_name || item.source || 'Fuente relacionada',
       url: item.url
@@ -3507,7 +3507,7 @@ function App() {
       {/* Chat Panel */}
       {chatOpen && (
         <div
-          className="fixed bottom-24 right-5 w-[calc(100vw-1.5rem)] md:w-[420px] h-[520px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl"
+          className="fixed bottom-24 right-5 w-[calc(100vw-1.5rem)] md:w-[420px] h-[min(78vh,540px)] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl"
           style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}
         >
           <div className="px-4 py-3.5 flex items-center justify-between gap-3" style={{ background: `linear-gradient(135deg, ${BRAND_NAVY}, ${BRAND_NAVY_SOFT})` }}>
@@ -3528,61 +3528,58 @@ function App() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5" style={{ backgroundColor: '#F7F9FC' }}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ backgroundColor: '#F8FAFD' }}>
             {currentNewsContext ? (
-              <div className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
-                <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-gray-400">Noticia en análisis</span>
-                <p className="text-sm font-bold leading-snug mt-2" style={{ color: BRAND_NAVY }}>{currentNewsContext.title}</p>
-                <p className="text-[11px] leading-relaxed mt-2 text-gray-600">
-                  {currentNewsContext.summary.slice(0, 180)}{currentNewsContext.summary.length > 180 ? '...' : ''}
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E3E8F2' }}>
+                <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-gray-500">Noticia vinculada al análisis</p>
+                <p className="mt-1.5 text-sm font-bold leading-snug" style={{ color: BRAND_NAVY }}>{currentNewsContext.title}</p>
+                <p className="mt-2 text-xs leading-relaxed text-gray-700">
+                  {currentNewsContext.summary.slice(0, 185)}{currentNewsContext.summary.length > 185 ? '...' : ''}
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-gray-600">
-                  <div className="rounded-lg p-2 bg-gray-50">
-                    <span className="block font-mono uppercase mb-1 text-gray-400">Plataforma</span>
-                    {currentNewsContext.platform}
-                  </div>
-                  <div className="rounded-lg p-2 bg-gray-50">
-                    <span className="block font-mono uppercase mb-1 text-gray-400">Publicador</span>
-                    {currentNewsContext.publisher}
-                  </div>
-                  <div className="rounded-lg p-2 bg-gray-50 col-span-2">
-                    <span className="block font-mono uppercase mb-1 text-gray-400">Fecha</span>
-                    {currentNewsContext.publicationDate}
-                  </div>
+                <div className="mt-2.5 flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="px-2 py-1 rounded-full" style={{ backgroundColor: '#EEF3FF', color: BRAND_NAVY }}>{currentNewsContext.platform}</span>
+                  <span className="px-2 py-1 rounded-full" style={{ backgroundColor: '#FFF2E8', color: '#9A3F00' }}>{currentNewsContext.publisher}</span>
+                  {currentNewsContext.publicationDate && (
+                    <span className="px-2 py-1 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#334155' }}>{currentNewsContext.publicationDate}</span>
+                  )}
                 </div>
                 {currentNewsContext.relatedSources.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <div className="mt-2.5 border-t pt-2" style={{ borderColor: '#EEF2F8' }}>
+                    <p className="text-[11px] font-semibold text-gray-600">Fuentes relacionadas</p>
+                    <div className="mt-1.5 space-y-1">
                     {currentNewsContext.relatedSources.map((item, idx) => (
                       <a
-                        key={`${item.name}-${idx}`}
+                        key={`${item.url}-${idx}`}
                         href={item.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-2 py-1 rounded-full text-[10px] font-medium"
-                        style={{ backgroundColor: '#101B3D10', color: BRAND_NAVY }}
+                        className="block text-xs underline underline-offset-2"
+                        style={{ color: BRAND_NAVY }}
                       >
                         {item.name}
                       </a>
                     ))}
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
-                <p className="text-sm font-semibold" style={{ color: BRAND_NAVY }}>Sin noticia activa</p>
-                <p className="text-[11px] mt-1 text-gray-600">Analiza una URL para que Kuybot cargue automáticamente el contexto periodístico.</p>
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#FFFFFF', border: '1px dashed #D5DCEA' }}>
+                <p className="text-[11px] leading-relaxed text-gray-600">
+                  Analiza primero una noticia en "Link Noticia" y aquí verás el contexto conectado para hacer preguntas más precisas.
+                </p>
               </div>
             )}
 
-            <div className="rounded-xl p-2.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
-              <p className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2 text-gray-400">Preguntas rápidas</p>
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E3E8F2' }}>
+              <p className="text-[11px] font-mono uppercase tracking-[0.14em] mb-2 text-gray-500">Preguntas frecuentes</p>
               <div className="flex flex-wrap gap-2">
                 {kuybotSuggestions.map((suggestion, idx) => (
                   <button
                     key={idx}
                     onClick={() => setInputMessage(suggestion)}
-                    className="px-2.5 py-1.5 rounded-full text-[10px] font-medium text-left"
-                    style={{ backgroundColor: '#F5822B18', color: BRAND_NAVY, border: '1px solid #F5822B24' }}
+                    className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-left"
+                    style={{ backgroundColor: '#F5822B1A', color: BRAND_NAVY, border: '1px solid #F5822B33' }}
                   >
                     {suggestion}
                   </button>
@@ -3593,17 +3590,17 @@ function App() {
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line"
+                  className="max-w-[86%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line"
                   style={
                     msg.role === 'user'
                       ? { backgroundColor: BRAND_ORANGE, color: '#FFFFFF', fontWeight: 600 }
-                      : { backgroundColor: '#FFFFFF', color: BRAND_NAVY, border: '1px solid #E9ECEF' }
+                      : { backgroundColor: '#FFFFFF', color: BRAND_NAVY, border: '1px solid #E3E8F2' }
                   }
                 >
                   {msg.text}
                   {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2 text-gray-400">Bibliografía</div>
+                    <div className="mt-3 pt-2 border-t" style={{ borderColor: '#EEF2F8' }}>
+                      <div className="text-[11px] font-mono uppercase tracking-[0.14em] mb-2 text-gray-500">Bibliografía</div>
                       <div className="space-y-1.5">
                         {msg.sources.slice(0, 6).map((source, sourceIdx) => {
                           let hostname = source
@@ -3618,7 +3615,7 @@ function App() {
                               href={source}
                               target="_blank"
                               rel="noreferrer"
-                              className="block text-[10px] leading-relaxed break-all underline-offset-2"
+                              className="block text-xs leading-relaxed break-all underline-offset-2"
                               style={{ color: BRAND_NAVY }}
                             >
                               <span className="font-semibold">{hostname}</span>
@@ -3633,7 +3630,7 @@ function App() {
             ))}
             {kuybotBusy && (
               <div className="flex justify-start">
-                <div className="max-w-[82%] px-3 py-2.5 rounded-2xl text-sm" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                <div className="max-w-[82%] px-3 py-2.5 rounded-2xl text-sm" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E3E8F2' }}>
                   <div className="flex items-center gap-2 text-xs text-gray-600">
                     <Activity className="w-3.5 h-3.5 animate-spin" />
                     Kuybot está revisando el contexto...
