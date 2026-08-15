@@ -917,6 +917,9 @@ function App() {
       } : null,
       extractedClaims: (raw.content_analysis.extracted_claims || []).slice(0, 6),
       llmAnalysis: raw.content_analysis.llm_analysis || null,
+      webArticles: raw.content_analysis.web_context?.articles?.slice(0, 8) || [],
+      webCrossReference: raw.content_analysis.web_context?.cross_reference || null,
+      transcriptionFull: truncateText(raw.content_analysis.transcription?.text, 2000),
       transcriptionExcerpt: truncateText(raw.content_analysis.transcription?.text, 500)
     } : null
   })
@@ -1930,10 +1933,10 @@ function App() {
         </div>
       )}
 
-      {d.contentAnalysis?.transcriptionExcerpt && (
+      {d.contentAnalysis?.transcriptionFull && (
         <div className="rounded-lg p-3" style={detailCardStyle}>
-          <span className="text-xs font-semibold" style={detailLabelStyle}>Transcripción</span>
-          <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.contentAnalysis.transcriptionExcerpt}</p>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Transcripción completa</span>
+          <p className="text-xs mt-1 leading-relaxed whitespace-pre-line" style={detailMutedStyle}>{d.contentAnalysis.transcriptionFull}</p>
         </div>
       )}
 
@@ -1943,6 +1946,29 @@ function App() {
           <ul className="mt-1.5 space-y-1">
             {d.contentAnalysis.factChecking.fact_checks.map((f, i) => (
               <li key={i} className="text-xs" style={detailMutedStyle}>· {f.title || f.claim_text || 'Verificación'}{f.publisher ? ` (${f.publisher})` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d.contentAnalysis?.webArticles?.length > 0 && (
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs font-semibold" style={detailLabelStyle}>Fuentes relacionadas (DuckDuckGo)</span>
+          {d.contentAnalysis.webCrossReference && (
+            <p className="text-xs mt-1 mb-1.5" style={{ color: '#3B82F6' }}>
+              {d.contentAnalysis.webCrossReference.reliable_count || 0} fuentes confiables
+              {d.contentAnalysis.webCrossReference.confidence_boost != null && ` · +${(d.contentAnalysis.webCrossReference.confidence_boost * 100).toFixed(0)}% confiabilidad`}
+            </p>
+          )}
+          <ul className="mt-1.5 space-y-1.5">
+            {d.contentAnalysis.webArticles.map((article, i) => (
+              <li key={i} className="text-xs" style={detailMutedStyle}>
+                <a href={article.url} target="_blank" rel="noreferrer" className="underline" style={{ color: BRAND_ORANGE }}>
+                  {article.title}
+                </a>
+                {article.source && <span> · {article.source}</span>}
+                {article.snippet && <div className="mt-0.5">{article.snippet.slice(0, 150)}</div>}
+              </li>
             ))}
           </ul>
         </div>
@@ -3013,15 +3039,28 @@ function App() {
                         </div>
                       )}
 
+                      {/* ===== TRANSCRIPCION COMPLETA ===== */}
+                      {analysisResult.content_analysis?.has_transcription && analysisResult.content_analysis?.transcription?.text && (
+                        <div className="rounded-xl border p-5" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="w-1 h-5 rounded-full" style={{ backgroundColor: BRAND_ORANGE }} />
+                            <h4 className="text-sm font-bold text-gray-900 tracking-wide">TRANSCRIPCIÓN COMPLETA</h4>
+                          </div>
+                          <div className="rounded-lg p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                            <p className="text-sm leading-relaxed text-gray-900 whitespace-pre-line">{analysisResult.content_analysis.transcription.text}</p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* ===== TRANSCRIPCION + VERIFICACION ===== */}
                       {analysisResult.content_analysis?.has_transcription && analysisResult.content_analysis?.transcription?.text && (
                         <div className="rounded-xl border p-5" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
                           <div className="flex items-center gap-2 mb-4">
                             <div className="w-1 h-5 rounded-full" style={{ backgroundColor: BRAND_ORANGE }} />
-                            <h4 className="text-sm font-bold text-gray-900 tracking-wide">TRANSCRIPCIÓN + VERIFICACIÓN</h4>
+                            <h4 className="text-sm font-bold text-gray-900 tracking-wide">VERIFICACIÓN POR SEGMENTOS</h4>
                           </div>
                           <div className="space-y-3">
-                            {segVs.length > 0 ? segVs.slice(0, 6).map((seg, idx) => {
+                            {segVs.length > 0 ? segVs.map((seg, idx) => {
                               const minutes = Math.floor(seg.start / 60)
                               const seconds = Math.floor(seg.start % 60)
                               const timestamp = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
@@ -3035,7 +3074,7 @@ function App() {
                               }
                               const color = labelColors[seg.label] || '#7A8290'
                               return (
-                                <div key={idx} className="flex gap-3 pb-3" style={{ borderBottom: idx < 5 ? '1px solid #E9ECEF' : 'none' }}>
+                                <div key={idx} className="flex gap-3 pb-3" style={{ borderBottom: idx < segVs.length - 1 ? '1px solid #E9ECEF' : 'none' }}>
                                   <span className="text-xs font-mono font-bold flex-shrink-0 pt-0.5" style={{ color: BRAND_ORANGE }}>{timestamp}</span>
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm leading-relaxed mb-1.5 text-gray-900">"{seg.text}"</p>
@@ -3049,7 +3088,7 @@ function App() {
                                   </div>
                                 </div>
                               )
-                            }) : segs.slice(0, 6).map((segment, idx) => {
+                            }) : segs.map((segment, idx) => {
                               const minutes = Math.floor(segment.start / 60)
                               const seconds = Math.floor(segment.start % 60)
                               const timestamp = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
@@ -3101,6 +3140,140 @@ function App() {
                           </div>
                         </div>
                       )}
+
+                      {/* ===== ANALISIS DE IA (GROQ) ===== */}
+                      {analysisResult.content_analysis?.llm_analysis && (() => {
+                        const llm = analysisResult.content_analysis.llm_analysis
+                        const verdictColor = llm.veredicto === 'AUTÉNTICO' ? '#00C896' : llm.veredicto === 'MIXTO' ? '#E8A33D' : '#E85D5D'
+                        return (
+                        <div className="rounded-xl border p-5" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="w-1 h-5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
+                            <h4 className="text-sm font-bold text-gray-900 tracking-wide">ANÁLISIS DE IA (GROQ)</h4>
+                            {llm.veredicto && (
+                              <span className="text-xs px-2 py-0.5 rounded font-bold" style={{ backgroundColor: verdictColor + '20', color: verdictColor, border: `1px solid ${verdictColor}40` }}>
+                                {llm.veredicto}{llm.confianza != null ? ` · ${llm.confianza}%` : ''}
+                              </span>
+                            )}
+                          </div>
+
+                          {llm.tema_principal && (
+                            <p className="text-sm font-semibold text-gray-900 mb-3">{llm.tema_principal}</p>
+                          )}
+
+                          {llm.resumen && (
+                            <div className="mb-3">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Resumen</p>
+                              <p className="text-sm leading-relaxed text-gray-700">{llm.resumen}</p>
+                            </div>
+                          )}
+
+                          {llm.contexto_politico && (
+                            <div className="mb-3">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Contexto político</p>
+                              <p className="text-sm leading-relaxed text-gray-700">{llm.contexto_politico}</p>
+                            </div>
+                          )}
+
+                          {llm.afirmaciones_clave?.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Afirmaciones clave</p>
+                              <ul className="space-y-1">
+                                {llm.afirmaciones_clave.map((claim, i) => (
+                                  <li key={i} className="text-sm text-gray-700 flex gap-2">
+                                    <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                                    {claim}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                            {llm.coincide_con_fuentes != null && (
+                              <div className="rounded-lg p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                                <p className="text-xs text-gray-500">¿Coincide con fuentes?</p>
+                                <p className="text-sm font-semibold mt-0.5" style={{ color: llm.coincide_con_fuentes ? '#00C896' : '#E85D5D' }}>
+                                  {llm.coincide_con_fuentes ? 'Sí' : 'No'}
+                                </p>
+                              </div>
+                            )}
+                            {llm.confianza != null && (
+                              <div className="rounded-lg p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                                <p className="text-xs text-gray-500">Confianza del veredicto</p>
+                                <p className="text-sm font-semibold mt-0.5" style={{ color: verdictColor }}>{llm.confianza}%</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {llm.indicios_ia && (
+                            <div className="rounded-lg p-3 mb-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Indicios de generación por IA</p>
+                              <p className="text-sm leading-relaxed text-gray-700">{llm.indicios_ia}</p>
+                            </div>
+                          )}
+
+                          {llm.observaciones && (
+                            <div className="rounded-lg p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9ECEF' }}>
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Observaciones</p>
+                              <p className="text-sm leading-relaxed text-gray-700">{llm.observaciones}</p>
+                            </div>
+                          )}
+
+                          {llm.model_used && (
+                            <p className="text-xs text-gray-400 mt-3 font-mono">Modelo: {llm.model_used} · {llm.tokens_used || 0} tokens</p>
+                          )}
+                        </div>
+                        )
+                      })()}
+
+                      {/* ===== FUENTES WEB (DUCKDUCKGO) ===== */}
+                      {analysisResult.content_analysis?.web_context?.articles?.length > 0 && (() => {
+                        const articles = analysisResult.content_analysis.web_context.articles
+                        const crossRef = analysisResult.content_analysis.web_context.cross_reference
+                        return (
+                        <div className="rounded-xl border p-5" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="w-1 h-5 rounded-full" style={{ backgroundColor: '#3B82F6' }} />
+                            <h4 className="text-sm font-bold text-gray-900 tracking-wide">FUENTES RELACIONADAS</h4>
+                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#3B82F620', color: '#3B82F6' }}>
+                              {articles.length} encontradas
+                            </span>
+                          </div>
+
+                          {crossRef && (
+                            <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                              <p className="text-xs leading-relaxed" style={{ color: '#1D4ED8' }}>
+                                <strong>Cruce con fuentes confiables:</strong> {crossRef.reliable_count || 0} fuentes confiables
+                                {crossRef.confidence_boost != null && ` · Aporte a la confiabilidad: +${(crossRef.confidence_boost * 100).toFixed(0)}%`}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            {articles.map((article, idx) => (
+                              <a
+                                key={`${article.url || article.title}-${idx}`}
+                                href={article.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block rounded-lg border p-3 transition-colors hover:bg-gray-50"
+                                style={{ borderColor: '#E9ECEF', backgroundColor: '#FFFFFF' }}
+                              >
+                                <p className="text-sm font-semibold text-gray-900">{article.title}</p>
+                                <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-600">
+                                  <span>{article.source || 'Fuente'}</span>
+                                  {article.date && <span>· {article.date}</span>}
+                                </div>
+                                {article.snippet && (
+                                  <p className="mt-1.5 text-xs leading-relaxed text-gray-600">{article.snippet}</p>
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                        )
+                      })()}
 
                       {/* ===== INFO TECNICA ===== */}
                       <div className="rounded-xl border p-4" style={{ backgroundColor: '#F8F9FA', borderColor: '#E9ECEF' }}>
