@@ -450,6 +450,19 @@ function App() {
       explanation: raw.source_classification.explanation
     } : null,
     urlTrust: raw.url_trust_assessment || null,
+    contentClassification: raw.url_content_classification ? {
+      content_kind: raw.url_content_classification.content_kind,
+      is_news: raw.url_content_classification.is_news
+    } : null,
+    informationRelevance: raw.information_relevance ? {
+      domain: raw.information_relevance.domain,
+      is_relevant: raw.information_relevance.is_relevant,
+      how_it_relates: truncateText(raw.information_relevance.how_it_relates, 200)
+    } : null,
+    llmExecution: raw.llm_execution ? {
+      provider: raw.llm_execution.provider,
+      status: raw.llm_execution.status
+    } : null,
     contentQuality: raw.content_quality || null,
     analysis: raw.analysis ? {
       summary: truncateText(raw.analysis.summary, 500),
@@ -962,24 +975,96 @@ function App() {
   const detailLabelStyle = { color: '#E8ECF1' }
   const detailMutedStyle = { color: '#7A8290' }
 
-  const renderNewsHistoryDetail = (d) => (
+  const CONTENT_KIND_LABELS = {
+    noticia: 'Noticia',
+    publicacion_red_social: 'Publicación social',
+    video_audio: 'Video / audio',
+    otro: 'Otro contenido',
+    indeterminado: 'Contenido por revisar'
+  }
+
+  const renderNewsHistoryDetail = (d) => {
+    const score = d.reliability?.score ?? null
+    const donutColor = score == null ? '#7A8290' : score >= 80 ? '#00C896' : score >= 60 ? '#E8A33D' : '#E85D5D'
+    const donutData = score == null ? [] : [
+      { name: 'Confiabilidad', value: score, color: donutColor },
+      { name: 'Pendiente', value: Math.max(0, 100 - score), color: '#1C2A52' }
+    ]
+    const riskLevel = d.risk?.level
+    const riskColor = riskLevel === 'bajo' ? '#00C896' : riskLevel === 'medio' ? '#E8A33D' : (riskLevel === 'alto' || riskLevel === 'critico') ? '#E85D5D' : '#7A8290'
+    const contentKindLabel = CONTENT_KIND_LABELS[d.contentClassification?.content_kind] || 'Contenido por revisar'
+    const domain = d.informationRelevance?.domain
+    const domainLabel = domain === 'electoral' ? 'Electoral' : domain === 'no_electoral' ? 'No electoral' : 'Relevancia indeterminada'
+    const domainColor = domain === 'electoral' ? '#00C896' : '#7A8290'
+    const llmStatus = d.llmExecution?.status
+    const llmLabel = llmStatus === 'used' ? 'Análisis IA aplicado' : llmStatus === 'fallback' ? 'Fallback local' : llmStatus === 'failed' ? 'IA con error' : llmStatus === 'disabled' ? 'IA no usada' : 'Sin dato'
+
+    return (
     <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: BRAND_ORANGE + '22', color: BRAND_ORANGE }}>
+          {contentKindLabel}
+        </span>
+        <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ backgroundColor: domainColor + '22', color: domainColor }}>
+          {domainLabel}
+        </span>
+        {riskLevel && (
+          <span className="text-xs px-2.5 py-1 rounded-full font-semibold capitalize" style={{ backgroundColor: riskColor + '22', color: riskColor }}>
+            Riesgo {riskLevel}
+          </span>
+        )}
+      </div>
+
       {d.reliability && (
-        <div className="rounded-lg p-3" style={detailCardStyle}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold" style={detailLabelStyle}>Confiabilidad estimada</span>
-            <span className="text-xs font-mono font-bold" style={{ color: BRAND_ORANGE }}>{d.reliability.score}/100 · {d.reliability.level}</span>
+        <div className="rounded-lg p-4" style={detailCardStyle}>
+          <div className="flex items-center gap-4">
+            <div className="w-24 h-24 relative flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={donutData} dataKey="value" innerRadius={30} outerRadius={44} startAngle={90} endAngle={450}>
+                    {donutData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-lg font-bold font-mono" style={{ color: donutColor }}>{score}%</span>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold" style={detailLabelStyle}>Confiabilidad</span>
+                <span className="text-xs font-mono capitalize" style={{ color: donutColor }}>{d.reliability.level}</span>
+              </div>
+              <p className="text-xs mt-1 leading-relaxed" style={detailMutedStyle}>{d.reliability.explanation}</p>
+            </div>
           </div>
-          <p className="text-xs leading-relaxed" style={detailMutedStyle}>{d.reliability.explanation}</p>
           {d.reliability.factors?.length > 0 && (
-            <ul className="mt-1.5 space-y-0.5">
-              {d.reliability.factors.map((f, i) => (
-                <li key={i} className="text-xs" style={detailMutedStyle}>· {f}</li>
-              ))}
-            </ul>
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1C2A52' }}>
+              <span className="text-xs font-semibold" style={detailLabelStyle}>¿Por qué este porcentaje?</span>
+              <ul className="mt-1.5 space-y-0.5">
+                {d.reliability.factors.map((f, i) => (
+                  <li key={i} className="text-xs" style={detailMutedStyle}>· {f}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs" style={detailMutedStyle}>Fuente</span>
+          <p className="text-sm font-semibold mt-0.5 truncate" style={detailLabelStyle}>{d.sourceVerification?.source_name || d.article?.source_domain || 'Sin fuente'}</p>
+        </div>
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs" style={detailMutedStyle}>Impacto de género</span>
+          <p className="text-sm font-semibold mt-0.5 truncate" style={detailLabelStyle}>{d.genderImpact?.status_label || 'Sin señales relevantes'}</p>
+        </div>
+        <div className="rounded-lg p-3" style={detailCardStyle}>
+          <span className="text-xs" style={detailMutedStyle}>Análisis IA</span>
+          <p className="text-sm font-semibold mt-0.5 truncate" style={detailLabelStyle}>{llmLabel}</p>
+        </div>
+      </div>
 
       {d.sourceVerification && (
         <div className="rounded-lg p-3" style={detailCardStyle}>
@@ -1071,7 +1156,8 @@ function App() {
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   const renderMediaHistoryDetail = (d) => (
     <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #1C2A52' }}>
